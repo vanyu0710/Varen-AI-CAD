@@ -559,10 +559,9 @@
     <span class="eyebrow-section">Transmission</span>
     <h2 class="section-title">5 挡手动<em>变速器总成</em></h2>
     <p class="section-subtitle">
-      <strong>壳体由 Varen CAD 自主生成</strong>（真实 LLM agent 调 MechKernel 公开 op，40 步 / 55 分钟）：下壳体 + 端盖，
-      8 处轴承座（4 轴×两端，外凸圆柱台 + 轴承孔）、剖分面 32×M8 法兰（与端盖孔位一一配对）、
-      32 条放射状铸造加强筋、放油塞 M12 / 加油 M16 螺纹孔、2 处安装底脚。
-      <br/>连同 24 件传动件共 26 件 / 325 对干涉全查 / <strong>硬碰撞 0</strong> · 材质着色（铸铁/钢/青铜，z-buffer 软件渲染）。
+      <strong>壳体由 Varen CAD 按工程规范自主生成</strong>：先调 <span class="mono">housing_design(brief)</span> 读内部件包络**反推**必需内腔（282×175×673mm）、各轴心/轴颈/齿顶半径，
+      再建模，最后逐项<b>程序审计</b>——旋转件间隙 5.00mm、7 处轴承座同轴配对、法兰螺栓边距 1.93mm、端盖可拆、单实体、卧式布局一致，<strong>审计 FAIL 0</strong>。
+      <br/>连同 24 件传动件共 26 件 / 325 对干涉全查 / <strong>硬碰撞 0</strong> · 材质着色（z-buffer 软件渲染）。
     </p>
     <div style="text-align:center;">
       <img src="images/varen-transmission-visual.png" alt="5 挡手动变速器总成可视化：装配四视图 + 24 个零件缩略图 + 指标" loading="lazy" style="width:100%;max-width:1180px;border:1px solid var(--line);border-radius:14px;box-shadow:0 20px 48px -20px rgba(4,17,31,0.26);"/>

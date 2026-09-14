@@ -303,6 +303,19 @@ class KernelWorkerClient:
             "parts": parts, "tolerance": tolerance, "expected_overlaps": expected_overlaps,
         }, timeout=timeout if timeout is not None else HEAVY_TIMEOUT)
 
+    def housing_brief(self, parts: list[dict], *, min_clearance: float = 5.0,
+                      timeout: float | None = None) -> dict:
+        """v0.18：读内部件实测几何 → 壳体设计简报（内腔/轴心/轴颈/齿顶/间隙）。"""
+        return self.request_ok("housing_brief", {"parts": parts, "min_clearance": min_clearance},
+                               timeout=timeout if timeout is not None else HEAVY_TIMEOUT)
+
+    def audit_housing(self, parts: list[dict], *, brief: dict | None = None,
+                      design: dict | None = None,
+                      timeout: float | None = None) -> dict:
+        """v0.18：壳体逐项审计（间隙/轴承座/螺栓边距/可拆性/单实体/布局）。"""
+        return self.request_ok("audit_housing", {"parts": parts, "brief": brief, "design": design},
+                               timeout=timeout if timeout is not None else HEAVY_TIMEOUT)
+
     def render_assembly(self, parts: list[dict], *, size: int = 480,
                         timeout: float | None = None) -> dict:
         """v0.14 装配预览：分件着色四视角 PNG 网格（render_base64）。"""

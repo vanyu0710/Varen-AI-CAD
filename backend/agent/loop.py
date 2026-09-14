@@ -354,6 +354,37 @@ _BUILTIN_CALC_KINDS = ("gear_ratio_split", "gear_pair", "nearest_standard_module
                        "shaft_diameter", "housing_wall")
 
 
+def _housing_design_tool() -> dict[str, Any]:
+    """合成工具 housing_design：先读内部件反推壳体尺寸，或审计已建壳体。"""
+    return {
+        "type": "function",
+        "function": {
+            "name": "housing_design",
+            "description": (
+                "壳体设计的程序化依据（建壳体前后都要用）。两种模式："
+                "mode='brief'：读取项目库已归档内部件（齿轮/轴/同步器）的实测几何，反推壳体尺寸——"
+                "返回内部件总包络、按最小工程间隙算出的必需内腔 min/max、各轴轴心与轴颈半径、"
+                "各齿轮齿顶半径与轴向跨度。建壳体前必须先调这个，壳体尺寸由它决定，"
+                "禁止自己先造一个任意大盒子。"
+                "mode='audit'：对当前项目库（壳体 + 内部件）逐项审计，返回 PASS/WARN/FAIL："
+                "旋转件径向/轴向间隙、内腔是否过松（>15mm 判定为大盒子）、轴承座同轴配对与座厚、"
+                "螺栓孔数量与最小边距、端盖可拆性、壳体单实体、轴布局一致性。"
+                "有 FAIL 必须修正后重试；壳体 finish_part 时会自动再跑一次该审计作为硬门。"
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "mode": {"type": "string", "enum": ["brief", "audit"],
+                             "description": "brief=反推尺寸；audit=审计"},
+                    "min_clearance": {"type": "number",
+                                      "description": "最小工程间隙 mm（brief 模式，默认 5）"},
+                },
+                "required": ["mode"],
+            },
+        },
+    }
+
+
 def _design_calculate_tool() -> dict[str, Any]:
     """合成工具：设计调研计算（纯算术，无几何副作用，计划门控期间可用）。"""
     return {
@@ -576,7 +607,13 @@ def _update_plan_tool() -> dict[str, Any]:
 READONLY_OPS = frozenset({"query", "select", "measure", "render", "validate_geometry"})
 # design_calculate 是纯算术调研工具（无几何副作用），计划门控期间必须可用；
 # finish_part 涉及归档+清空，只在全量工具表（计划批准后）暴露。
-_SYNTHETIC_TOOLS = frozenset({"ask_user", "propose_plan", "update_plan", "design_calculate"})
+def _is_housing_name(name: str) -> bool:
+    """壳体类零件名判定（触发设计审计门的依据）。"""
+    return any(k in str(name) for k in ("壳体", "箱体", "箱盖", "端盖", "上盖", "housing", "case", "cover"))
+
+
+_SYNTHETIC_TOOLS = frozenset({"ask_user", "propose_plan", "update_plan",
+                                            "design_calculate", "housing_design"})
 
 
 def _is_destructive(op: str, args: dict[str, Any]) -> bool:
@@ -699,6 +736,7 @@ class AgentLoop:
             _propose_plan_tool(),
             _update_plan_tool(),
             _design_calculate_tool(),
+            _housing_design_tool(),
             _run_build_script_tool(),
             _finish_part_tool(),
             _export_assembly_tool(),
@@ -988,6 +1026,8 @@ class AgentLoop:
                     self._remember(self._handle_propose_plan(tool_call))
                 elif tool_call.name == "update_plan":
                     self._remember(self._handle_update_plan(tool_call))
+                elif tool_call.name == "housing_design":
+                    self._remember(self._handle_housing_design(tool_call, result))
                 elif tool_call.name == "design_calculate":
                     self._remember(self._handle_design_calculate(tool_call, result))
                 elif tool_call.name == "run_build_script":
@@ -1326,6 +1366,67 @@ class AgentLoop:
         return tool_result_message(tool_call, json.dumps(result, ensure_ascii=False), protocol=self.protocol)
 
     # ---------------------------------------------------- design research
+    def _handle_housing_design(self, tool_call: ToolCall, result: AgentLoopResult) -> dict[str, Any]:
+        """合成工具 housing_design：brief=读内部件反推壳体尺寸；audit=逐项审计。"""
+        self.step_count += 1
+        result.steps = self.step_count
+        args = tool_call.arguments if isinstance(tool_call.arguments, dict) else {}
+        mode = str(args.get("mode") or "brief")
+        self.emit("agent_step", f"壳体设计: {mode}", {
+            "step": self.step_count, "op": "housing_design", "args_preview": _args_preview(args),
+        })
+        from backend import storage
+
+        if not self.project_id:
+            payload = {"success": False, "error_kind": "INVALID_REQUEST",
+                       "error": "housing_design 需要 project_id（项目零件库）。"}
+            return tool_result_message(tool_call, json.dumps(payload, ensure_ascii=False),
+                                       protocol=self.protocol)
+        try:
+            manifest = storage.read_manifest(self.project_id)
+            entries = [p for p in manifest.get("parts") or [] if isinstance(p, dict)]
+            lib_dir = storage.project_parts_dir(self.project_id).resolve()
+            payload_parts = []
+            for e in entries:
+                sf = str(e.get("step_file") or "")
+                if sf and (lib_dir / sf).exists():
+                    payload_parts.append({"path": str(lib_dir / sf), "name": str(e.get("name")),
+                                          "pose": e.get("pose") or {"position": [0.0, 0.0, 0.0]}})
+        except Exception as exc:  # noqa: BLE001
+            payload_parts = []
+            self.logs.append(f"housing_design 读库失败: {type(exc).__name__}: {exc}")
+        if not payload_parts:
+            payload = {"success": False, "error_kind": "EMPTY_LIBRARY",
+                       "error": "项目零件库为空：内部件应先归档，壳体才能由其包络反推。"}
+            return tool_result_message(tool_call, json.dumps(payload, ensure_ascii=False),
+                                       protocol=self.protocol)
+
+        try:
+            if mode == "brief":
+                internals = [p for p in payload_parts if not _is_housing_name(p["name"])]
+                data = self.worker.housing_brief(
+                    internals,
+                    min_clearance=float(args.get("min_clearance") or 5.0))
+                payload = {"success": True, **data,
+                           "note": ("壳体尺寸必须由 required_cavity 决定：内腔 = 内部件包络 + 最小间隙；"
+                                    "各轴轴心/轴颈半径决定轴承座孔位与孔径。禁止先造任意大盒子。")}
+            else:
+                internals = [p for p in payload_parts if not _is_housing_name(p["name"])]
+                brief = self.worker.housing_brief(internals) if internals else None
+                data = self.worker.audit_housing(payload_parts, brief=brief)
+                fails = [c for c in (data.get("checks") or []) if c.get("status") == "FAIL"]
+                warns = [c for c in (data.get("checks") or []) if c.get("status") == "WARN"]
+                payload = {"success": bool(data.get("ok", True)), **data,
+                           "note": ("全部 PASS，可 finish_part（归档时会再自动审计一次）。"
+                                    if not fails else
+                                    "存在 FAIL 项，必须按明细修正壳体后重新 audit，不得归档。")
+                           + (f" 另有 {len(warns)} 项 WARN 建议改进。" if warns else "")}
+        except Exception as exc:  # noqa: BLE001 —— worker 超时/崩溃
+            payload = {"success": False, "error_kind": "WORKER_ERROR",
+                       "error": f"壳体设计分析失败: {type(exc).__name__}: {exc}"}
+        return tool_result_message(tool_call, json.dumps(payload, ensure_ascii=False, default=str),
+                                   protocol=self.protocol)
+
     def _handle_design_calculate(self, tool_call: ToolCall, result: AgentLoopResult) -> dict[str, Any]:
         """合成工具 design_calculate：纯算术调研计算（内置 kind 或沙箱 custom）。"""
         from backend.agent import calc_sandbox
@@ -1883,6 +1984,50 @@ class AgentLoop:
                         f"（外凸台不计为孔；贯通/盲以拓扑分类为准）")
         return violations
 
+    def _audit_housing_gate(self, current_name: str | None = None,
+                            current_geometry: Any = None) -> dict | None:
+        """v0.18：对"待归档壳体 + 项目库内部件"跑设计审计。
+
+        v0.18.1 修复：待归档零件此刻尚未入库（finish_part 先审计后归档），
+        必须把当前导出几何一并纳入，否则审计只看到内部件 → 误报"没有壳体零件"。
+        库不可读/审计通道异常 → 返回 None（不阻断，记日志）。
+        """
+        from backend import storage
+
+        try:
+            manifest = storage.read_manifest(self.project_id or "")
+            entries = [p for p in manifest.get("parts") or [] if isinstance(p, dict)]
+            lib_dir = storage.project_parts_dir(self.project_id or "").resolve()
+            payload = []
+            for e in entries:
+                sf = str(e.get("step_file") or "")
+                if sf and (lib_dir / sf).exists():
+                    payload.append({"path": str(lib_dir / sf), "name": str(e.get("name")),
+                                    "pose": e.get("pose") or {"position": [0.0, 0.0, 0.0]}})
+            # 当前待归档壳体尚未入库：把内核里的当前几何导出到临时 STEP 供审计
+            if current_name and not any(p["name"] == current_name for p in payload):
+                tmp = self.run_dir / f"_audit_{_part_slug(current_name)}.step"
+                try:
+                    self.worker.export_step(str(tmp))
+                    if tmp.exists():
+                        payload.append({"path": str(tmp), "name": current_name,
+                                        "pose": {"position": [0.0, 0.0, 0.0]}})
+                except Exception as exc:  # noqa: BLE001
+                    self.logs.append(f"壳体审计临时导出失败: {type(exc).__name__}: {exc}")
+            if len(payload) < 2:
+                return None
+            # 简报由内部件反推，供审计做"内腔是否过松"的判据
+            internals = [p for p in payload if not _is_housing_name(p["name"])]
+            brief = None
+            if internals:
+                brief = self.worker.housing_brief(internals)
+            report = self.worker.audit_housing(payload, brief=brief)
+            self.logs.append(f"壳体审计: {report.get('summary')}")
+            return report
+        except Exception as exc:  # noqa: BLE001 —— 审计通道异常不阻断归档
+            self.logs.append(f"壳体审计跳过: {type(exc).__name__}: {exc}")
+            return None
+
     def _finish_part_inner(self, part: str, note: str, result: AgentLoopResult,
                            contract: list | None = None) -> dict[str, Any]:
         # 1) 当前会话必须有几何
@@ -1936,6 +2081,18 @@ class AgentLoop:
                     "error": f"strict 几何验证未通过，拒绝归档: {validation_info}。"
                              "请修复几何（检查自交/空体积/无效拓扑）后重试 finish_part。",
                     "geometry_validation": validation_info}
+        # 1e) v0.18 壳体设计审计门（规范第 10 条）：壳体类零件归档前，必须把
+        # 内腔尺寸/轴承座/螺栓边距/可拆性/单实体/布局逐项机器校验通过。
+        if _is_housing_name(part) and self.project_id:
+            # 待归档零件尚未入库，必须单独传入（否则审计只看到内部件 → 误报"没有壳体"）
+            audit = self._audit_housing_gate(current_name=part)
+            if audit is not None and not audit.get("ok", True):
+                fails = [c for c in (audit.get("checks") or []) if c.get("status") == "FAIL"]
+                return {"success": False, "error_kind": "HOUSING_AUDIT_FAILED",
+                        "error": "壳体设计审计未通过：" + "；".join(
+                            f"{c['id']}: {c['detail']}" for c in fails) +
+                            "。请按明细修正（内腔由包络反推、螺栓孔留边距、轴承座同轴配对）后重试。",
+                        "audit": audit}
         # 2) 导出归档（零件级 STEP + STL）
         # v2.17 P1-7：同名返工原位替换 run 记录（index 稳定），否则追加
         existing_idx = next((p.get("index") for p in result.parts if p.get("part") == part), None)

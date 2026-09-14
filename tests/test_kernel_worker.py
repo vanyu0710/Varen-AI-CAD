@@ -42,10 +42,12 @@ class FakeStdin:
 
 
 class FakeStdout:
+    """可迭代 stdout：读线程 `for line in stdout` 逐行取，队列耗尽即 EOF。"""
+
     def __init__(self, proc: "FakeProc") -> None:
         self.proc = proc
 
-    def readline(self) -> str:
+    def _next(self):
         if self.proc.responses:
             action = self.proc.responses.pop(0)
             if isinstance(action, Exception):
@@ -53,7 +55,18 @@ class FakeStdout:
             if callable(action):
                 return action(self.proc.written_lines)
             return action
-        return ""  # EOF —— 模拟 worker 死亡
+        return None  # EOF —— 模拟 worker 死亡
+
+    def readline(self) -> str:
+        line = self._next()
+        return line if line else ""
+
+    def __iter__(self):
+        while True:
+            line = self._next()
+            if line is None or line == "":
+                return
+            yield line
 
     def close(self) -> None:
         pass
@@ -85,10 +98,11 @@ def _ok_response(lines: list[str]) -> str:
     return json.dumps({"id": request["id"], "ok": True, "data": {"pong": True, "echo": request["cmd"]}})
 
 
-def _make_client(responses) -> tuple[KernelWorkerClient, FakeProc]:
+def _make_client(responses, *, timeout: float = 5) -> tuple[KernelWorkerClient, FakeProc]:
     proc = FakeProc(responses)
-    client = KernelWorkerClient(timeout=5)
+    client = KernelWorkerClient(timeout=timeout)
     client._proc = proc  # 直接注入，跳过真实 Popen
+    client._start_reader()  # v0.17：request 从 _lines 队列取，必须启动读线程
     return client, proc
 
 
@@ -140,14 +154,15 @@ class KernelWorkerClientTests(unittest.TestCase):
             client.request_ok("ping")
 
     def test_timeout_kills_process(self) -> None:
-        # stdout 阻塞直到 watchdog kill → readline 返回 EOF → WORKER_DEAD
+        # v0.17：超时必定返回（不再依赖 readline 返回 EOF），并明确报 WORKER_TIMEOUT
         proc = FakeProc()
         proc.stdout = BlockingStdout(proc)
         client = KernelWorkerClient(timeout=0.2)
         client._proc = proc
+        client._start_reader()
         with self.assertRaises(KernelWorkerError) as ctx:
             client.request_ok("slow_op")
-        self.assertEqual(ctx.exception.kind, "WORKER_DEAD")
+        self.assertEqual(ctx.exception.kind, "WORKER_TIMEOUT")
         self.assertTrue(proc.killed)
 
     def test_restart_increments_counter(self) -> None:
@@ -273,6 +288,35 @@ class KernelWorkerEditCommandsTests(unittest.TestCase):
         client.render_assembly(parts, size=320)
         sent = json.loads(proc.written_lines[2])
         self.assertEqual(sent["payload"], {"parts": parts, "size": 320})
+
+
+class WorkerTimeoutTests(unittest.TestCase):
+    """v0.17：worker 不响应时 request 必须按时返回，不得永久阻塞。"""
+
+    def test_timeout_returns_promptly(self) -> None:
+        class HungStdout:
+            def __iter__(self):
+                time.sleep(600)   # 永不产出
+                return iter(())
+            def close(self):
+                pass
+        proc = FakeProc([])
+        proc.stdout = HungStdout()
+        client = KernelWorkerClient(timeout=0.6)
+        client._proc = proc
+        client._start_reader()
+        t0 = time.time()
+        with self.assertRaises(KernelWorkerError) as ctx:
+            client.request("ping")
+        self.assertEqual(ctx.exception.kind, "WORKER_TIMEOUT")
+        self.assertLess(time.time() - t0, 3.0)
+        self.assertTrue(proc.killed)
+
+    def test_dead_worker_is_worker_dead_not_timeout(self) -> None:
+        client, proc = _make_client([])   # 无响应 → 立即 EOF
+        with self.assertRaises(KernelWorkerError) as ctx:
+            client.request("ping")
+        self.assertEqual(ctx.exception.kind, "WORKER_DEAD")
 
 
 if __name__ == "__main__":

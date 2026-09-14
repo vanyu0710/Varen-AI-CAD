@@ -17,13 +17,18 @@ import json
 import os
 import subprocess
 import sys
+import queue
 import threading
 from pathlib import Path
 from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_KERNEL_REPO = ROOT.parents[1] / "mechcad-kernel"
-DEFAULT_TIMEOUT = 120
+# 常规 op 超时；重操作（导出/渲染/装配）用 HEAVY_TIMEOUT。
+# 旧值 120s 会让大零件导出（数千面）触发超时，且旧实现超时后读端可能
+# 永久阻塞（Windows 上 kill 后 readline 不一定返回）——已改读线程+队列。
+DEFAULT_TIMEOUT = 300
+HEAVY_TIMEOUT = 1800
 
 
 class KernelWorkerError(RuntimeError):
@@ -65,6 +70,10 @@ class KernelWorkerClient:
         self._lock = threading.Lock()
         self._request_seq = 0
         self.restart_count = 0
+        self._reader: threading.Thread | None = None
+        self._lines: "queue.Queue[str | None]" = queue.Queue()
+        self._read_gate = threading.Event()
+        self._reader_stop = threading.Event()
 
     # ------------------------------------------------------------- lifecycle
     def _spawn(self) -> subprocess.Popen:
@@ -89,11 +98,47 @@ class KernelWorkerClient:
         if self.is_alive():
             return
         self._proc = self._spawn()
+        self._start_reader()
+
+    def _start_reader(self) -> None:
+        """后台读线程：按需读取一行响应入队，队列取空后阻塞等待下一次请求。
+
+        门控式读取（而非持续 `for line in stdout`）：只有 request 写好一行、
+        置位事件后，读线程才读**一行**。这样既保证超时时调用方能按时从队列
+        get 到结果（或超时返回），又不会在无在途请求时把后续响应提前消费掉。
+        """
+        proc = self._proc
+        if proc is None or proc.stdout is None:
+            return
+        while not self._lines.empty():
+            try:
+                self._lines.get_nowait()
+            except queue.Empty:
+                break
+        self._read_gate = threading.Event()
+        self._reader_stop = threading.Event()
+
+        def _pump():
+            while not self._reader_stop.is_set():
+                if not self._read_gate.wait(timeout=0.2):
+                    continue
+                self._read_gate.clear()
+                try:
+                    line = proc.stdout.readline()
+                except (OSError, ValueError, InterruptedError):
+                    line = ""
+                self._lines.put(line if line else None)
+                if not line:
+                    return
+
+        self._reader = threading.Thread(target=_pump, daemon=True)
+        self._reader.start()
 
     def restart(self) -> None:
         self.stop()
         self.restart_count += 1
         self._proc = self._spawn()
+        self._start_reader()
 
     def stop(self) -> None:
         proc = self._proc
@@ -123,21 +168,30 @@ class KernelWorkerClient:
             request_id = f"req-{self._request_seq}"
             line = json.dumps({"id": request_id, "cmd": cmd, "payload": payload or {}}, ensure_ascii=False)
             effective_timeout = timeout if timeout is not None else self.timeout
-            watchdog: threading.Timer | None = None
             try:
                 self._proc.stdin.write(line + "\n")
                 self._proc.stdin.flush()
             except (BrokenPipeError, OSError, ValueError) as exc:
                 raise KernelWorkerError(f"kernel worker stdin 写入失败（{cmd}）: {exc}", kind="WORKER_DEAD") from exc
-            watchdog = threading.Timer(effective_timeout, self._on_timeout)
-            watchdog.daemon = True
+            self._read_gate.set()  # 通知读线程：有在途请求，读一行
             try:
-                watchdog.start()
-                response_line = self._readline()
-            finally:
-                if watchdog is not None:
-                    watchdog.cancel()
-            if not response_line:
+                response_line = self._lines.get(timeout=effective_timeout)
+            except queue.Empty:
+                proc = self._proc
+                self._on_timeout()
+                if proc is not None:
+                    for stream in (proc.stdout, proc.stdin, proc.stderr):
+                        try:
+                            if stream is not None:
+                                stream.close()
+                        except (OSError, ValueError):
+                            pass
+                raise KernelWorkerError(
+                    f"kernel worker 处理 {cmd} 超时（{effective_timeout:.0f}s）；"
+                    "重操作可用 MECHCAD_KERNEL_TIMEOUT 放宽或减少单次几何量",
+                    kind="WORKER_TIMEOUT",
+                ) from None
+            if response_line is None:
                 proc = self._proc
                 self.stop()  # 确保进程结束，stderr 才可读
                 stderr_tail = ""
@@ -196,10 +250,12 @@ class KernelWorkerClient:
         return self.request_ok("redo", {"steps": steps}, timeout=timeout)
 
     def export_mesh(self, path: str, *, fmt: str = "stl", timeout: float | None = None) -> dict:
-        return self.request_ok("export_mesh", {"path": path, "format": fmt}, timeout=timeout)
+        return self.request_ok("export_mesh", {"path": path, "format": fmt},
+                               timeout=timeout if timeout is not None else HEAVY_TIMEOUT)
 
     def export_step(self, path: str, timeout: float | None = None) -> dict:
-        return self.request_ok("export", {"path": path, "format": "step"}, timeout=timeout)
+        return self.request_ok("export", {"path": path, "format": "step"},
+                               timeout=timeout if timeout is not None else HEAVY_TIMEOUT)
 
     def reset(self, timeout: float | None = None) -> dict:
         """v0.12 逐件建模：进程内重建全新内核（特征树/几何/op 历史全清）。
@@ -218,7 +274,7 @@ class KernelWorkerClient:
             "op": "render",
             "args": {"views": views or ["iso", "front", "top", "side"], "size": size, "quality": "evidence"},
             "include_render": True,
-        }, timeout=timeout)
+        }, timeout=timeout if timeout is not None else HEAVY_TIMEOUT)
 
     def run_script(self, code: str, *, name: str = "", failure_policy: str = "abort",
                    timeout: float | None = None) -> dict:
@@ -237,7 +293,7 @@ class KernelWorkerClient:
                         timeout: float | None = None) -> dict:
         """v0.14 装配导出：零件 STEP + 位姿 → XCAF 装配树 STEP（无状态，内核不感知）。"""
         return self.request_ok("export_assembly", {"parts": parts, "out_step": out_step},
-                               timeout=timeout)
+                               timeout=timeout if timeout is not None else HEAVY_TIMEOUT)
 
     def assembly_interference(self, parts: list[dict], *, tolerance: float = 0.001,
                               expected_overlaps: list[dict] | None = None,
@@ -245,12 +301,13 @@ class KernelWorkerClient:
         """v0.14 装配干涉：全对求交（bbox 预过滤）+ 预期重叠豁免。"""
         return self.request_ok("assembly_interference", {
             "parts": parts, "tolerance": tolerance, "expected_overlaps": expected_overlaps,
-        }, timeout=timeout)
+        }, timeout=timeout if timeout is not None else HEAVY_TIMEOUT)
 
     def render_assembly(self, parts: list[dict], *, size: int = 480,
                         timeout: float | None = None) -> dict:
         """v0.14 装配预览：分件着色四视角 PNG 网格（render_base64）。"""
-        return self.request_ok("render_assembly", {"parts": parts, "size": size}, timeout=timeout)
+        return self.request_ok("render_assembly", {"parts": parts, "size": size},
+                               timeout=timeout if timeout is not None else HEAVY_TIMEOUT)
 
     # -------------------------------------------------------------- internal
     def _readline(self) -> str:

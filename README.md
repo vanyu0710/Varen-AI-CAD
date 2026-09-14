@@ -20,7 +20,7 @@
 </p>
 
 <p align="center">
-  5 挡手动变速器总成（三轴式 · 真渐开线斜齿 β=15° · 剖分铸铁壳体 · 27 件 / 材质渲染）：<br/>
+  5 挡手动变速器总成（三轴式 · 真渐开线斜齿 β=15° · 壳体由 Varen CAD 自主生成 · 26 件 / 硬碰撞 0）：<br/>
   <img src="docs/images/varen-transmission-visual.png" alt="5 挡手动变速器总成可视化：装配四视图 + 24 零件缩略图" width="860"/>
 </p>
 

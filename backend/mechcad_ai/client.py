@@ -57,12 +57,142 @@ def _env_int(name: str, default: int) -> int:
         return default
 
 
+def _env_float(name: str, default: float) -> float:
+    try:
+        return float(os.getenv(name, str(default)))
+    except (TypeError, ValueError):
+        return default
+
+
 def _role_timeout(role: str) -> int:
     return _env_int(ENV_ROLE_MAP[role]["timeout"], DEFAULT_TIMEOUT)
 
 
 def _role_max_retries(role: str) -> int:
     return _env_int(ENV_ROLE_MAP[role]["max_retries"], DEFAULT_MAX_RETRIES)
+
+
+def resolve_role_params(settings, role: str, *, default_max_tokens: int = 4096, default_temperature: float = 0.1) -> dict[str, int | float]:
+    """Resolve generation params for a role: settings -> ``MECHCAD_{ROLE}_*`` env -> default.
+
+    Each call site keeps its own default budget (e.g. the agent loop uses a large
+    planner max_tokens while the JSON planners keep 4096); the project config in
+    the model console overrides both.
+    """
+    if role not in ENV_ROLE_MAP:
+        raise ValueError(f"unsupported model role: {role}")
+    env = ENV_ROLE_MAP[role]
+    temperature = getattr(settings, f"{role}_temperature", None)
+    if temperature is None:
+        temperature = _env_float(f"MECHCAD_{role.upper()}_TEMPERATURE", default_temperature)
+    max_tokens = getattr(settings, f"{role}_max_tokens", None)
+    if max_tokens is None:
+        max_tokens = _env_int(f"MECHCAD_{role.upper()}_MAX_TOKENS", default_max_tokens)
+    timeout = getattr(settings, f"{role}_timeout_s", None)
+    if timeout is None:
+        timeout = _env_int(env["timeout"], DEFAULT_TIMEOUT)
+    max_retries = getattr(settings, f"{role}_max_retries", None)
+    if max_retries is None:
+        max_retries = _env_int(env["max_retries"], DEFAULT_MAX_RETRIES)
+    return {
+        "temperature": float(temperature),
+        "max_tokens": int(max_tokens),
+        "timeout": int(timeout),
+        "max_retries": int(max_retries),
+    }
+
+
+def _openai_models_urls(base_url: str) -> list[str]:
+    base_url = base_url.rstrip("/")
+    urls = [f"{base_url}/models"]
+    if not base_url.endswith("/v1"):
+        urls.append(f"{base_url}/v1/models")
+    return urls
+
+
+def list_role_models(settings, role: str, language: str = "zh") -> dict[str, Any]:
+    """Fetch the provider's model id list via ``GET {base}/models`` (or ``/v1/models``).
+
+    Never raises: returns ``{ok, model_ids, endpoint, elapsed_ms, message}``. API keys
+    are only ever sent as request headers, never echoed back in any field.
+    """
+    def msg(zh: str, en: str) -> str:
+        return en if language == "en" else zh
+
+    if role not in ENV_ROLE_MAP:
+        raise ValueError(f"unsupported model role: {role}")
+    config = resolve_role_config(settings, role)
+    if not config["api_key"] or not config["base_url"]:
+        return {"ok": False, "model_ids": [], "endpoint": None, "elapsed_ms": None,
+                "message": msg("请先填写 API Key 与 Base URL。", "Enter an API key and base URL first.")}
+    if config["protocol"] == "anthropic":
+        urls = [f"{config['base_url']}/v1/models"]
+        headers = {"X-Api-Key": config["api_key"], "Authorization": f"Bearer {config['api_key']}",
+                   "anthropic-version": "2023-06-01"}
+    else:
+        urls = _openai_models_urls(config["base_url"])
+        headers = {"Authorization": f"Bearer {config['api_key']}"}
+
+    last: dict[str, Any] = {}
+    for url in urls:
+        started = time.perf_counter()
+        try:
+            response = requests.get(url, headers=headers, timeout=20)
+        except requests.RequestException as exc:
+            last = {"endpoint": url, "message": msg(f"网络不可达：{exc}", f"Network unreachable: {exc}")}
+            continue
+        elapsed_ms = int((time.perf_counter() - started) * 1000)
+        content_type = response.headers.get("content-type", "")
+        last = {"endpoint": url, "elapsed_ms": elapsed_ms, "status_code": response.status_code}
+        if not response.ok:
+            if response.status_code in (401, 403):
+                last["message"] = msg(f"认证失败（HTTP {response.status_code}）。", f"Authentication failed (HTTP {response.status_code}).")
+            elif response.status_code == 404:
+                last["message"] = msg("该服务未提供模型列表接口（HTTP 404），请手动填写模型名称。",
+                                      "This service exposes no model list (HTTP 404); type the model name manually.")
+            else:
+                last["message"] = msg(f"服务返回 HTTP {response.status_code}。", f"Service returned HTTP {response.status_code}.")
+            continue
+        if "json" not in content_type.lower():
+            last["message"] = msg("模型列表接口返回的不是 JSON。", "The model list endpoint did not return JSON.")
+            continue
+        try:
+            data = response.json()
+        except ValueError:
+            last["message"] = msg("模型列表内容无法解析为 JSON。", "Model list could not be parsed as JSON.")
+            continue
+        model_ids = _extract_model_ids(data)
+        if not model_ids:
+            last["message"] = msg("接口未返回任何模型 ID。", "The endpoint returned no model ids.")
+            continue
+        return {"ok": True, "model_ids": model_ids, "endpoint": url, "elapsed_ms": elapsed_ms,
+                "message": msg(f"获取到 {len(model_ids)} 个模型。", f"Fetched {len(model_ids)} models.")}
+    return {"ok": False, "model_ids": [], "endpoint": last.get("endpoint"),
+            "elapsed_ms": last.get("elapsed_ms"), "message": last.get("message") or msg("获取模型列表失败。", "Failed to fetch the model list.")}
+
+
+def _extract_model_ids(data: Any) -> list[str]:
+    """Pull model ids from OpenAI ({"data":[{"id":..}]}) or Anthropic ({"data":[{"id":..}]}) shapes."""
+    items = data.get("data") if isinstance(data, dict) else None
+    if not isinstance(items, list):
+        items = data.get("models") if isinstance(data, dict) else None
+    ids: list[str] = []
+    if isinstance(items, list):
+        for item in items:
+            if isinstance(item, dict):
+                mid = item.get("id") or item.get("name") or item.get("model")
+                if mid:
+                    ids.append(str(mid))
+            elif isinstance(item, str):
+                ids.append(item)
+    # de-dup, keep provider order
+    seen: set[str] = set()
+    out: list[str] = []
+    for mid in ids:
+        if mid not in seen:
+            seen.add(mid)
+            out.append(mid)
+    return out
 
 
 def resolve_role_config(settings, role: str) -> dict[str, str]:
@@ -127,6 +257,7 @@ def test_model_connection(settings, role: str, language: str = "zh") -> dict[str
             urls.append(f"{config['base_url']}/v1/chat/completions")
     last: dict[str, Any] = {}
     for url in urls:
+        started = time.perf_counter()
         try:
             if config["protocol"] == "anthropic":
                 response = _post_anthropic_test(config, url, messages)
@@ -135,11 +266,13 @@ def test_model_connection(settings, role: str, language: str = "zh") -> dict[str
         except requests.RequestException as exc:
             last = {"message": msg(f"网络不可达：{exc}", f"Network unreachable: {exc}"), "endpoint": url}
             continue
+        elapsed_ms = int((time.perf_counter() - started) * 1000)
         content_type = response.headers.get("content-type", "")
         last = {
             "endpoint": url,
             "status_code": response.status_code,
             "content_type": content_type,
+            "elapsed_ms": elapsed_ms,
         }
         if response.ok:
             if "json" not in content_type.lower():
@@ -151,6 +284,10 @@ def test_model_connection(settings, role: str, language: str = "zh") -> dict[str
                     config["protocol"] != "anthropic" and data.get("choices")
                 ):
                     last["ok"] = True
+                    echo = _extract_test_echo(config["protocol"], data)
+                    if echo:
+                        last["echo"] = echo[:60]
+                        last["echo_truncated"] = len(echo) > 60
                     last["message"] = msg("连接成功：最小文本请求已返回。", "Connection successful: the minimal text request returned.")
                     return last | {"used_env_fallback": used_env_fallback}
                 last["message"] = msg("返回 JSON 但缺少标准模型响应字段。", "Returned JSON but is missing standard model response fields.")
@@ -166,6 +303,19 @@ def test_model_connection(settings, role: str, language: str = "zh") -> dict[str
         if "text/html" in content_type.lower():
             last["message"] += msg(" 返回的是 HTML，Base URL 很可能填成了网站首页。", " The response is HTML; Base URL is probably the website homepage.")
     return {"ok": False, **last, "used_env_fallback": used_env_fallback}
+
+
+def _extract_test_echo(protocol: str, data: dict[str, Any]) -> str:
+    """Best-effort first-text snippet from a minimal test response (no exceptions)."""
+    try:
+        if protocol == "anthropic":
+            blocks = data.get("content") or []
+            texts = [str(b.get("text", "")) for b in blocks if isinstance(b, dict) and b.get("type") == "text"]
+            return " ".join(t for t in texts if t).strip()
+        message = ((data.get("choices") or [{}])[0]).get("message") or {}
+        return str(message.get("content") or "").strip()
+    except (KeyError, IndexError, TypeError, AttributeError):
+        return ""
 
 
 def _post_openai_test(config: dict[str, str], url: str, messages: list[dict[str, Any]]):
@@ -195,8 +345,8 @@ def chat_completion(
     role: str,
     messages: list[dict[str, Any]],
     *,
-    max_tokens: int = 4096,
-    temperature: float = 0.1,
+    max_tokens: int | None = None,
+    temperature: float | None = None,
     timeout: int | None = None,
     max_retries: int | None = None,
     response_json: bool = False,
@@ -206,13 +356,19 @@ def chat_completion(
     """Send a chat request to the configured model for a role and return the text.
 
     For vision roles an image (raw base64, no data-url prefix) may be attached to
-    the final user message when ``image_base64`` is given.
+    the final user message when ``image_base64`` is given. Unspecified generation
+    params come from the project model config, then ``MECHCAD_{ROLE}_*`` env.
     """
     config = resolve_role_config(settings, role)
     if not config["api_key"]:
         raise ApiCallError(f"{role} API key is not configured")
-    timeout = _role_timeout(role) if timeout is None else timeout
-    max_retries = _role_max_retries(role) if max_retries is None else max_retries
+    params = resolve_role_params(settings, role)
+    if max_tokens is None:
+        max_tokens = int(params["max_tokens"])
+    if temperature is None:
+        temperature = float(params["temperature"])
+    timeout = int(params["timeout"]) if timeout is None else timeout
+    max_retries = int(params["max_retries"]) if max_retries is None else max_retries
     last_error: ApiCallError | None = None
     for attempt in range(max_retries + 1):
         try:
@@ -428,8 +584,8 @@ def chat_completion_with_tools(
     tools: list[dict[str, Any]],
     *,
     tool_choice: str = "auto",
-    max_tokens: int = 4096,
-    temperature: float = 0.1,
+    max_tokens: int | None = None,
+    temperature: float | None = None,
     timeout: int | None = None,
     max_retries: int | None = None,
     on_text_delta: Callable[[str], None] | None = None,
@@ -446,8 +602,13 @@ def chat_completion_with_tools(
     config = resolve_role_config(settings, role)
     if not config["api_key"]:
         raise ApiCallError(f"{role} API key is not configured")
-    timeout = _role_timeout(role) if timeout is None else timeout
-    max_retries = _role_max_retries(role) if max_retries is None else max_retries
+    params = resolve_role_params(settings, role)
+    if max_tokens is None:
+        max_tokens = int(params["max_tokens"])
+    if temperature is None:
+        temperature = float(params["temperature"])
+    timeout = int(params["timeout"]) if timeout is None else timeout
+    max_retries = int(params["max_retries"]) if max_retries is None else max_retries
     last_error: ApiCallError | None = None
     for attempt in range(max_retries + 1):
         try:

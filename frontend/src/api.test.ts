@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { artifactUrl, assemblyArtifactUrl, resolveApiRoot, resolveWsRoot } from "./api";
+import { artifactUrl, assemblyArtifactUrl, resolveApiRoot, resolveWsRoot, withStrippedKeyMasks } from "./api";
+import { DEFAULT_SETTINGS } from "./store";
+import type { ModelConfig } from "./api";
 
 describe("assembly artifact urls (v0.14 F2a)", () => {
   it("builds library file urls with encoding", () => {
@@ -36,5 +38,19 @@ describe("same-origin address resolution", () => {
     const root = resolveWsRoot({}, "");
     expect(root.startsWith("ws://")).toBe(true);
     expect(root.endsWith("/")).toBe(false);
+  });
+});
+
+describe("model key mask stripping (v0.20 console)", () => {
+  it("treats server masks as unset for probe requests", () => {
+    const config: ModelConfig = {
+      ...DEFAULT_SETTINGS,
+      vision_api_key: "***configured:abcd***",
+      planner_api_key: "sk-real-key",
+    };
+    const stripped = withStrippedKeyMasks(config);
+    expect(stripped.vision_api_key).toBe("");
+    expect(stripped.planner_api_key).toBe("sk-real-key");
+    expect(config.vision_api_key).toBe("***configured:abcd***");
   });
 });

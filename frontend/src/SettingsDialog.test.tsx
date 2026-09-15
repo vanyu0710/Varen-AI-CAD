@@ -28,7 +28,8 @@ describe("SettingsDialog", () => {
     expect(container).toBeEmptyDOMElement();
   });
 
-  it("shows model configuration and startup behavior", () => {
+  it("shows model configuration and startup behavior", async () => {
+    const user = userEvent.setup();
     render(
       <SettingsDialog
         open
@@ -44,6 +45,8 @@ describe("SettingsDialog", () => {
       />,
     );
     expect(screen.getByText("设置中心")).toBeInTheDocument();
+    expect(screen.getByText("通用")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "模型" }));
     expect(screen.getByText("视觉读图模型")).toBeInTheDocument();
     expect(screen.getByText("建模规划模型")).toBeInTheDocument();
   });

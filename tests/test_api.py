@@ -167,8 +167,9 @@ class MechCADApiTests(unittest.TestCase):
             response = self.client.post(f"/api/projects/{project_id}/generate", json=payload)
         self.assertEqual(response.status_code, 200, response.text)
         settings = response.json()["settings"]
-        self.assertEqual(settings["vision_api_key"], "***configured***")
-        self.assertEqual(settings["planner_api_key"], "***configured***")
+        # v0.20 harness console: mask exposes only the last 4 chars ("cret").
+        self.assertEqual(settings["vision_api_key"], "***configured:cret***")
+        self.assertEqual(settings["planner_api_key"], "***configured:cret***")
         self.assertNotIn(secret, response.text)
 
     def test_project_settings_can_be_saved_without_running_cad(self) -> None:
@@ -193,7 +194,7 @@ class MechCADApiTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200, response.text)
         self.assertEqual(response.json()["settings"]["operation_mode"], "smart")
         self.assertEqual(response.json()["settings"]["smart_fill_policy"], "limited_fill")
-        self.assertEqual(response.json()["settings"]["vision_api_key"], "***configured***")
+        self.assertEqual(response.json()["settings"]["vision_api_key"], "***configured:cret***")
         self.assertEqual(main_module.store.get_project(project_id).settings.vision_api_key, secret)
 
     def test_get_missing_project_is_404(self) -> None:

@@ -7,6 +7,10 @@ from uuid import uuid4
 
 from backend.schemas import DesignSnapshot, ModelConfig, ProjectState, now_iso
 
+# v0.20 模型配置台：UI 提交的密钥掩码前缀（***configured[:尾号]***）一律视为
+# "保持原值"，真实密钥绝不会被掩码字符串覆盖落库——即使请求绕过了端点层防护。
+KEY_MASK_PREFIX = "***configured"
+
 
 class SessionStore:
     """In-memory project store with optional JSON persistence.
@@ -76,6 +80,12 @@ class SessionStore:
 
     def update_config(self, project_id: str, model_config: ModelConfig) -> ProjectState:
         project = self.get_project(project_id)
+        for role in ("vision", "planner"):
+            key = f"{role}_api_key"
+            incoming = str(getattr(model_config, key, "") or "")
+            existing = str(getattr(project.settings, key, "") or "")
+            if incoming.startswith(KEY_MASK_PREFIX) and existing and not existing.startswith(KEY_MASK_PREFIX):
+                setattr(model_config, key, existing)
         project.settings = model_config
         project.updated_at = now_iso()
         self._save()

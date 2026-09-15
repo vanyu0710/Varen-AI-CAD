@@ -60,8 +60,6 @@ def generate_feature_plan(
             settings,
             "planner",
             messages,
-            max_tokens=4096,
-            temperature=0.1,
             response_json=True,
         )
     except ApiCallError:
@@ -126,8 +124,6 @@ def chat_edit_operations(
             settings,
             "planner",
             messages,
-            max_tokens=4096,
-            temperature=0.1,
             response_json=True,
         )
     except ApiCallError:

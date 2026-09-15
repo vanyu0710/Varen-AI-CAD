@@ -43,8 +43,6 @@ def analyze_sketch(
             settings,
             "vision",
             messages,
-            max_tokens=4096,
-            temperature=0.1,
             response_json=True,
             image_base64=image_base64,
         )

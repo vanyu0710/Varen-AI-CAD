@@ -773,6 +773,17 @@ class ModelConfig(BaseModel):
     operation_mode: OperationMode = "strict"
     smart_fill_policy: SmartFillPolicy = "limited_fill"
     force_real_api: bool = False
+    # Per-role generation params. None = fall back to MECHCAD_{ROLE}_* env then
+    # code defaults. Only editable through the model config console; never sent
+    # as secrets, so masking does not apply here.
+    vision_temperature: float | None = Field(default=None, ge=0.0, le=2.0)
+    vision_max_tokens: int | None = Field(default=None, ge=1)
+    vision_timeout_s: int | None = Field(default=None, ge=1, le=600)
+    vision_max_retries: int | None = Field(default=None, ge=0, le=5)
+    planner_temperature: float | None = Field(default=None, ge=0.0, le=2.0)
+    planner_max_tokens: int | None = Field(default=None, ge=1)
+    planner_timeout_s: int | None = Field(default=None, ge=1, le=600)
+    planner_max_retries: int | None = Field(default=None, ge=0, le=5)
 
 
 class ModelTestRequest(BaseModel):
@@ -786,6 +797,9 @@ class ModelTestDiagnostics(BaseModel):
     content_type: str | None = None
     endpoint: str | None = None
     used_env_fallback: bool = False
+    elapsed_ms: int | None = None
+    echo: str | None = None
+    echo_truncated: bool = False
 
 
 class ModelTestResponse(BaseModel):
@@ -796,6 +810,20 @@ class ModelTestResponse(BaseModel):
     model: str
     message: str
     diagnostics: ModelTestDiagnostics = Field(default_factory=ModelTestDiagnostics)
+
+
+class ModelListResponse(BaseModel):
+    # ``model_ids`` collides with pydantic's protected ``model_`` namespace.
+    model_config = ConfigDict(protected_namespaces=())
+
+    ok: bool
+    role: str
+    provider: str
+    protocol: str
+    model_ids: list[str] = Field(default_factory=list)
+    endpoint: str | None = None
+    elapsed_ms: int | None = None
+    message: str = ""
 
 
 class ProjectState(BaseModel):

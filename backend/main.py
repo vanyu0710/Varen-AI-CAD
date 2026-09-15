@@ -49,6 +49,7 @@ from backend.schemas import (
     GenerateRequest,
     KernelDeleteFeatureRequest,
     KernelUpdateFeatureRequest,
+    ModelListResponse,
     ModelTestRequest,
     ModelTestResponse,
     ModelTestDiagnostics,
@@ -60,7 +61,9 @@ from backend.schemas import (
 from backend.mechcad_ai.client import (
     chat_completion_with_tools,
     has_configured_model,
+    list_role_models,
     resolve_role_config,
+    resolve_role_params,
     test_model_connection,
 )
 from backend.mechcad_ai.prompts import get_prompt
@@ -88,6 +91,21 @@ app.add_middleware(
 )
 
 SECRET_MASK = "***configured***"
+# 回传给 UI 的密钥掩码。带尾号（末 4 位）方便用户认出是哪把 key；短密钥不带尾号。
+# 前端提交时掩码前缀值一律视为"不修改"，真实密钥永不离开服务端。
+MASK_PREFIX = "***configured"
+
+
+def _mask_key(raw: str) -> str:
+    """Mask a stored API key for UI display, exposing only its last 4 chars."""
+    if not raw:
+        return ""
+    tail = raw[-4:] if len(raw) >= 12 else ""
+    return f"***configured:{tail}***" if tail else SECRET_MASK
+
+
+def _is_mask_value(value: str) -> bool:
+    return value == "" or value.startswith(MASK_PREFIX)
 
 
 def _loc(language: str, zh: str, en: str) -> str:
@@ -156,7 +174,26 @@ def test_model(request: ModelTestRequest) -> ModelTestResponse:
             content_type=result.get("content_type"),
             endpoint=result.get("endpoint"),
             used_env_fallback=bool(result.get("used_env_fallback")),
+            elapsed_ms=result.get("elapsed_ms"),
+            echo=result.get("echo"),
+            echo_truncated=bool(result.get("echo_truncated")),
         ),
+    )
+
+
+@app.post("/api/model/list", response_model=ModelListResponse)
+def list_models(request: ModelTestRequest) -> ModelListResponse:
+    config = resolve_role_config(request.config, request.role)
+    result = list_role_models(request.config, request.role, language=request.language)
+    return ModelListResponse(
+        ok=bool(result.get("ok", False)),
+        role=request.role,
+        provider=getattr(request.config, f"{request.role}_provider"),
+        protocol=config["protocol"],
+        model_ids=list(result.get("model_ids", [])),
+        endpoint=result.get("endpoint"),
+        elapsed_ms=result.get("elapsed_ms"),
+        message=str(result.get("message", _loc(request.language, "未获取到模型列表", "No model list returned"))),
     )
 
 
@@ -193,9 +230,9 @@ def update_project_settings(project_id: str, request: ProjectSettingsRequest):
     project = _project_or_404(project_id)
     for role in ("vision", "planner"):
         key = f"{role}_api_key"
-        incoming = getattr(request, key, "")
+        incoming = str(getattr(request, key, "") or "")
         existing = getattr(project.settings, key, "")
-        if incoming in ("", SECRET_MASK) and existing:
+        if _is_mask_value(incoming) and existing:
             setattr(request, key, existing)
     project = store.update_config(project_id, request)
     return _public_project(project)
@@ -658,16 +695,19 @@ def _run_agent_thread(
         config = resolve_role_config(settings, "planner")
 
         # v0.13.1 重推理模型（如 deepseek-v4.1-flash）reasoning token 会挤占输出预算，
-        # 8192 会导致长计划/BOM 时 finish_reason=length、正文为空。可用环境变量覆盖。
-        try:
-            planner_max_tokens = int(os.getenv("MECHCAD_PLANNER_MAX_TOKENS", "32768"))
-        except ValueError:
-            planner_max_tokens = 32768
+        # 8192 会导致长计划/BOM 时 finish_reason=length、正文为空。
+        # 优先级：项目配置（模型配置台）> MECHCAD_PLANNER_MAX_TOKENS 环境变量 > 默认 32768。
+        planner_params = resolve_role_params(settings, "planner", default_max_tokens=32768)
 
         def chat_with_tools(messages, tools, on_text_delta=None):
-            return chat_completion_with_tools(settings, "planner", messages, tools,
-                                              max_tokens=planner_max_tokens,
-                                              on_text_delta=on_text_delta)
+            return chat_completion_with_tools(
+                settings, "planner", messages, tools,
+                max_tokens=int(planner_params["max_tokens"]),
+                temperature=float(planner_params["temperature"]),
+                timeout=int(planner_params["timeout"]),
+                max_retries=int(planner_params["max_retries"]),
+                on_text_delta=on_text_delta,
+            )
 
         task_message = build_task_message(text, worker, worker.capabilities(), image_data_url)
         result = run_agent_loop(
@@ -1024,12 +1064,12 @@ def _execution_gate(
 
 
 def _public_project(project):
-    """Never send API credentials back to the browser or logs."""
+    """Never send API credentials back to the browser or logs (only the last 4 chars)."""
     safe = deepcopy(project)
     for role in ("vision", "planner"):
         key = f"{role}_api_key"
         raw = getattr(safe.settings, key, "")
-        setattr(safe.settings, key, "***configured***" if raw else "")
+        setattr(safe.settings, key, _mask_key(raw))
     return safe
 
 

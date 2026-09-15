@@ -15,6 +15,15 @@ export type ModelConfig = {
   operation_mode: "strict" | "smart";
   smart_fill_policy: "suggest_only" | "limited_fill" | "aggressive_fill" | "full_autonomous";
   force_real_api?: boolean;
+  // Per-role generation params; null/absent = provider/env default (v0.20 console).
+  vision_temperature?: number | null;
+  vision_max_tokens?: number | null;
+  vision_timeout_s?: number | null;
+  vision_max_retries?: number | null;
+  planner_temperature?: number | null;
+  planner_max_tokens?: number | null;
+  planner_timeout_s?: number | null;
+  planner_max_retries?: number | null;
 };
 
 export type ModelRole = "vision" | "planner";
@@ -170,7 +179,21 @@ export type ModelTestResult = {
     content_type?: string;
     endpoint?: string;
     used_env_fallback: boolean;
+    elapsed_ms?: number | null;
+    echo?: string | null;
+    echo_truncated?: boolean;
   };
+};
+
+export type ModelListResult = {
+  ok: boolean;
+  role: ModelRole;
+  provider: string;
+  protocol: string;
+  model_ids: string[];
+  endpoint?: string | null;
+  elapsed_ms?: number | null;
+  message: string;
 };
 
 export type ProjectState = {
@@ -480,13 +503,38 @@ export async function deleteKernelFeature(projectId: string, featureId: string) 
   return parseResponse<{ ok: boolean; project: ProjectState }>(response);
 }
 
+/** UI 显示的密钥掩码（***configured[:尾号]***）在探测请求中视同"未填"，走服务端 env 兜底。 */
+export const KEY_MASK_PREFIX = "***configured";
+
+export function withStrippedKeyMasks(config: ModelConfig): ModelConfig {
+  const out: ModelConfig = { ...config };
+  for (const role of ["vision", "planner"] as const) {
+    const key = `${role}_api_key` as const;
+    const value: string = out[key] || "";
+    if (value.startsWith(KEY_MASK_PREFIX)) {
+      (out as Record<string, unknown>)[key] = "";
+    }
+  }
+  return out;
+}
+
 export async function testModelConnection(role: ModelRole, config: ModelConfig, language: string) {
   const response = await fetch(`${API_ROOT}/api/model/test`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ role, config, language }),
+    body: JSON.stringify({ role, config: withStrippedKeyMasks(config), language }),
   });
   return parseResponse<ModelTestResult>(response);
+}
+
+/** 拉取厂商模型列表（服务端代理 GET /models；真实密钥只在请求头，永不回传）。 */
+export async function fetchModelList(role: ModelRole, config: ModelConfig, language: string) {
+  const response = await fetch(`${API_ROOT}/api/model/list`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ role, config: withStrippedKeyMasks(config), language }),
+  });
+  return parseResponse<ModelListResult>(response);
 }
 
 async function parseResponse<T>(response: Response): Promise<T> {

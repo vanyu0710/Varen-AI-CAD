@@ -80,6 +80,7 @@ export const DEFAULT_SETTINGS: ModelConfig = {
   planner_protocol: "openai",
   operation_mode: "strict",
   smart_fill_policy: "limited_fill",
+  force_real_api: false,
 };
 
 export type UiState = {

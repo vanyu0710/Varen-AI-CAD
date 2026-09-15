@@ -915,17 +915,22 @@ export default function App() {
   );
 }
 
-const SECRET_MASK = "***configured***";
+export const SECRET_MASK = "***configured***";
+// v0.20: 掩码可带尾号（***configured:abcd***）。前端把任意该前缀值都当作
+// "密钥保存在服务端"，输入框显示掩码用于"已保存 ····abcd"徽章；真实密钥从不回传。
+export const SECRET_MASK_PREFIX = "***configured";
+export const isMaskedKey = (value: string | undefined | null): boolean => Boolean(value && value.startsWith(SECRET_MASK_PREFIX));
 
 function mergeSettings(publicSettings: ModelConfig, draftSettings: ModelConfig): ModelConfig {
   const merged = { ...publicSettings };
   for (const role of ["vision", "planner"] as const) {
     const key = `${role}_api_key` as "vision_api_key" | "planner_api_key";
-    if (publicSettings[key] === SECRET_MASK) {
-      if (draftSettings[key] && draftSettings[key] !== SECRET_MASK) {
+    if (isMaskedKey(publicSettings[key])) {
+      // 保留服务端掩码（徽章可读出尾号）；本地已输入新密钥时以草稿为准。
+      if (draftSettings[key] && !isMaskedKey(draftSettings[key])) {
         merged[key] = draftSettings[key];
       } else {
-        merged[key] = "";
+        merged[key] = publicSettings[key];
       }
     }
   }

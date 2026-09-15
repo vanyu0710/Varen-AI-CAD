@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import ModelConfigPanel from "./ModelConfigPanel";
 import type { ModelConfig } from "./api";
 import type { StartupMode } from "./store";
@@ -18,6 +18,8 @@ type Props = {
   onStartupModeChange: (mode: StartupMode) => void;
 };
 
+type Tab = "general" | "models";
+
 export default function SettingsDialog({
   open,
   settings,
@@ -34,6 +36,7 @@ export default function SettingsDialog({
   const language = useAppStore((state) => state.language);
   const setLanguage = useAppStore((state) => state.setLanguage);
   const closeRef = useRef<HTMLButtonElement | null>(null);
+  const [tab, setTab] = useState<Tab>("general");
 
   useEffect(() => {
     if (!open) {
@@ -59,10 +62,10 @@ export default function SettingsDialog({
     <div className="modal-backdrop" role="presentation" onMouseDown={(event) => {
       if (event.target === event.currentTarget) onClose();
     }}>
-      <section className="settings-dialog" role="dialog" aria-modal="true" aria-label={t("settings.title")}>
+      <section className="settings-dialog settings-console" role="dialog" aria-modal="true" aria-label={t("settings.title")}>
         <header className="settings-header">
           <div>
-            <p className="eyebrow">SETTINGS</p>
+            <p className="eyebrow">VAREN CAD · MODEL CONSOLE</p>
             <h2>{t("settings.title")}</h2>
           </div>
           <button type="button" ref={closeRef} className="icon-button" onClick={onClose} title={t("settings.close.title")}>
@@ -70,84 +73,91 @@ export default function SettingsDialog({
           </button>
         </header>
 
-        <div className="settings-body">
-          <section className="settings-section">
-            <div className="settings-section-title">
-              <h3>{t("settings.general")}</h3>
-              <span>{t("settings.general.hint")}</span>
-            </div>
-            <label className="settings-mode-field">
-              <span>{t("settings.language")}</span>
-              <select
-                value={language}
-                onChange={(event) => setLanguage(event.target.value as "zh" | "en")}
-              >
-                <option value="zh">{t("settings.language.zh")}</option>
-                <option value="en">{t("settings.language.en")}</option>
-              </select>
-            </label>
-            <label className="settings-mode-field">
-              <span>{t("startup.behavior")}</span>
-              <select value={startupMode} onChange={(event) => onStartupModeChange(event.target.value as StartupMode)}>
-                <option value="always">{t("startup.mode.always")}</option>
-                <option value="first">{t("startup.mode.first")}</option>
-                <option value="off">{t("startup.mode.off")}</option>
-              </select>
-            </label>
-            <label className="settings-mode-field">
-              <span>{t("settings.operation_mode")}</span>
-              <select
-                value={settings.operation_mode}
-                onChange={(event) =>
-                  onChange({
-                    ...settings,
-                    operation_mode: event.target.value as "strict" | "smart",
-                  })
-                }
-              >
-                <option value="strict">{t("settings.mode.strict")}</option>
-                <option value="smart">{t("settings.mode.smart")}</option>
-              </select>
-            </label>
-            {settings.operation_mode === "smart" && (
-              <label className="settings-mode-field">
-                <span>{t("settings.smart_policy")}</span>
-                <select
-                  value={settings.smart_fill_policy}
-                  onChange={(event) =>
-                    onChange({
-                      ...settings,
-                      smart_fill_policy: event.target.value as ModelConfig["smart_fill_policy"],
-                    })
-                  }
-                >
-                  <option value="limited_fill">{t("settings.policy.limited_fill")}</option>
-                  <option value="aggressive_fill">{t("settings.policy.aggressive_fill")}</option>
-                  <option value="full_autonomous">{t("settings.policy.full_autonomous")}</option>
-                </select>
-              </label>
+        <div className="settings-console-body">
+          <nav className="settings-tabs" aria-label={t("settings.tabs")}>
+            <button type="button" className={tab === "general" ? "active" : ""} onClick={() => setTab("general")}>
+              {t("settings.tab.general")}
+            </button>
+            <button type="button" className={tab === "models" ? "active" : ""} onClick={() => setTab("models")}>
+              {t("settings.tab.models")}
+              {dirty && <span className="tab-dirty" aria-hidden />}
+            </button>
+          </nav>
+
+          <div className="settings-tab-content">
+            {tab === "general" ? (
+              <section className="settings-section">
+                <div className="settings-section-title">
+                  <h3>{t("settings.general")}</h3>
+                  <span>{t("settings.general.hint")}</span>
+                </div>
+                <label className="settings-mode-field">
+                  <span>{t("settings.language")}</span>
+                  <select value={language} onChange={(event) => setLanguage(event.target.value as "zh" | "en")}>
+                    <option value="zh">{t("settings.language.zh")}</option>
+                    <option value="en">{t("settings.language.en")}</option>
+                  </select>
+                </label>
+                <label className="settings-mode-field">
+                  <span>{t("startup.behavior")}</span>
+                  <select value={startupMode} onChange={(event) => onStartupModeChange(event.target.value as StartupMode)}>
+                    <option value="always">{t("startup.mode.always")}</option>
+                    <option value="first">{t("startup.mode.first")}</option>
+                    <option value="off">{t("startup.mode.off")}</option>
+                  </select>
+                </label>
+                <label className="settings-mode-field">
+                  <span>{t("settings.operation_mode")}</span>
+                  <select
+                    value={settings.operation_mode}
+                    onChange={(event) => onChange({ ...settings, operation_mode: event.target.value as "strict" | "smart" })}
+                  >
+                    <option value="strict">{t("settings.mode.strict")}</option>
+                    <option value="smart">{t("settings.mode.smart")}</option>
+                  </select>
+                </label>
+                {settings.operation_mode === "smart" && (
+                  <label className="settings-mode-field">
+                    <span>{t("settings.smart_policy")}</span>
+                    <select
+                      value={settings.smart_fill_policy}
+                      onChange={(event) =>
+                        onChange({ ...settings, smart_fill_policy: event.target.value as ModelConfig["smart_fill_policy"] })
+                      }
+                    >
+                      <option value="limited_fill">{t("settings.policy.limited_fill")}</option>
+                      <option value="aggressive_fill">{t("settings.policy.aggressive_fill")}</option>
+                      <option value="full_autonomous">{t("settings.policy.full_autonomous")}</option>
+                    </select>
+                  </label>
+                )}
+              </section>
+            ) : (
+              <section className="settings-section settings-model-section">
+                <div className="settings-section-title">
+                  <h3>{t("settings.models")}</h3>
+                  <span>{t("settings.models.hint")}</span>
+                </div>
+                <ModelConfigPanel
+                  value={settings}
+                  onChange={onChange}
+                  onApply={onApply}
+                  dirty={dirty}
+                  notice={notice}
+                  saving={saving}
+                />
+              </section>
             )}
-
-          </section>
-
-          <section className="settings-section settings-model-section">
-            <div className="settings-section-title">
-              <h3>{t("settings.models")}</h3>
-              <span>{t("settings.models.hint")}</span>
-            </div>
-            <ModelConfigPanel
-              value={settings}
-              onChange={onChange}
-              onApply={onApply}
-              dirty={dirty}
-              notice={notice}
-              saving={saving}
-            />
-          </section>
+          </div>
         </div>
 
         <footer className="settings-footer">
           <span>{dirty ? t("settings.dirty") : t("settings.saved")}</span>
+          {dirty && (
+            <button type="button" onClick={onApply} disabled={saving}>
+              {saving ? t("model.saving") : t("model.apply")}
+            </button>
+          )}
           <button type="button" className="primary" onClick={onClose}>
             {t("settings.done")}
           </button>

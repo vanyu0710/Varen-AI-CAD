@@ -1,3 +1,4 @@
+import AssemblyCheckSummary from "./layout/AssemblyCheckSummary";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   artifactUrl,
@@ -112,7 +113,7 @@ export default function App() {
     finalizeChatAssistant,
   } = useAppStore();
   const bootRef = useRef(false);
-  const chatInputRef = useRef<HTMLInputElement>(null);
+  const chatInputRef = useRef<HTMLTextAreaElement>(null);
   const [planMode, setPlanMode] = useState(false);
   const language = useAppStore((state) => state.language);
 
@@ -542,8 +543,15 @@ export default function App() {
       url: assemblyArtifactUrl(project.project_id, p.library_stl_file),
       position: p.pose?.position ?? [0, 0, 0],
       rotationDeg: p.pose?.rotation_deg ?? null,
+      // v0.19：材质标识（后端 manifest 权威，缺失时视口按零件名回退推断）
+      material: p.material ?? undefined,
+      color: p.material_color ?? undefined,
     }));
   }, [assembly, project]);
+  useEffect(() => {
+    setAssemblyHidden([]);
+    setAssemblySelected(null);
+  }, [project?.project_id]);
   const canUndo = Boolean(project?.history?.length);
   const canRedo = Boolean(project?.redo_stack?.length);
   const hasRequiredQuestions = questions.some((question) => question.required !== false && !question.answer);
@@ -774,8 +782,9 @@ export default function App() {
             <a className={runId ? "" : "disabled"} href={artifactUrl(runId, "execution_report")}>{t("app.artifact.report")}</a>
           </div>
           {(project?.current.artifacts.parts?.length ?? 0) > 0 && (
-            <div className="artifact-row artifact-row-parts" data-testid="artifact-parts" title={t("app.artifact.parts_title")}>
-              <span className="artifact-parts-label">{t("app.artifact.parts")}</span>
+            <details className="part-downloads" data-testid="artifact-parts">
+              <summary>{t("app.artifact.parts_title")} · {project!.current.artifacts.parts!.length}</summary>
+              <div className="artifact-row artifact-row-parts">
               {project!.current.artifacts.parts!.map((part) => (
                 <span key={`${part.index}-${part.part}`} className="artifact-part">
                   <span className="artifact-part-name" title={part.note || part.part}>{part.part}</span>
@@ -783,25 +792,37 @@ export default function App() {
                   {part.stl_file && <a href={artifactUrl(runId, part.stl_file)}>STL</a>}
                 </span>
               ))}
-            </div>
+              </div>
+            </details>
           )}
           {assembly && project && (
             <div className="assembly-panel" data-testid="assembly-panel">
               <div className="assembly-panel-head">
                 <span className="eyebrow">ASSEMBLY</span>
-                <a href={assemblyArtifactUrl(project.project_id, assembly.step_file)}>{t("app.assembly.step")}</a>
+                {assembly.step_file && <a href={assemblyArtifactUrl(project.project_id, assembly.step_file)}>{t("app.assembly.step")}</a>}
                 {assembly.report_file && (
                   <a href={assemblyArtifactUrl(project.project_id, assembly.report_file)}>{t("app.assembly.report")}</a>
                 )}
-                <span className={`assembly-interfere ${assembly.interfering_count - assembly.exempted_count > 0 ? "warn" : ""}`}>
-                  {t("app.assembly.interference", { count: assembly.interfering_count, exempt: assembly.exempted_count })}
-                </span>
               </div>
+              <AssemblyCheckSummary assembly={assembly} />
+              <div className="assembly-view-actions">
+                <span>{t("app.assembly.selected", { name: assemblySelected || "—" })}</span>
+                <button type="button" disabled={!assemblySelected || !assemblyModels?.some((m) => m.name === assemblySelected)}
+                  onClick={() => setAssemblyHidden((assemblyModels || []).filter((m) => m.name !== assemblySelected).map((m) => m.name))}>
+                  {t("app.assembly.isolate")}
+                </button>
+                <button type="button" disabled={!assemblyHidden.length} onClick={() => setAssemblyHidden([])}>
+                  {t("app.assembly.show_all")}
+                </button>
+              </div>
+              <details className="assembly-part-details">
+                <summary>{t("app.assembly.visibility")} · {assemblyModels?.length ?? 0}</summary>
               <div className="assembly-parts">
                 {(project.current.artifacts.parts || []).filter((p) => p.library_stl_file).map((part) => (
-                  <label key={part.part} className={`assembly-part ${assemblySelected === part.part ? "selected" : ""}`}>
+                  <div key={part.part} className={`assembly-part ${assemblySelected === part.part ? "selected" : ""}`}>
                     <input
                       type="checkbox"
+                      aria-label={t("app.assembly.visible_part", { name: part.part })}
                       checked={!assemblyHidden.includes(part.part)}
                       onChange={(event) => setAssemblyHidden((current) => (
                         event.target.checked
@@ -812,6 +833,7 @@ export default function App() {
                     <button
                       type="button"
                       className="assembly-part-name"
+                      aria-pressed={assemblySelected === part.part}
                       onClick={() => setAssemblySelected((current) => (current === part.part ? null : part.part))}
                     >
                       {part.part}
@@ -819,9 +841,10 @@ export default function App() {
                     <span className="assembly-part-pose" title={JSON.stringify(part.pose || null)}>
                       {part.pose ? `[${part.pose.position.map((v) => Math.round(v)).join(", ")}]` : "—"}
                     </span>
-                  </label>
+                  </div>
                 ))}
               </div>
+              </details>
             </div>
           )}
           </section>

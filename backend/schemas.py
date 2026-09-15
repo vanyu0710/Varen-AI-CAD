@@ -699,6 +699,10 @@ class AssemblySummary(BaseModel):
     render_file: str | None = None
     report_file: str | None = None
     parts_count: int = 0
+    # Optional for historical manifests: missing evidence must not become a zero.
+    hard_collision_count: int | None = None
+    expected_fit_count: int | None = None
+    expected_mesh_count: int | None = None
     total_pairs: int = 0
     interfering_count: int = 0
     exempted_count: int = 0
@@ -725,6 +729,9 @@ class PartArtifact(BaseModel):
     library_step_file: str | None = None
     library_stl_file: str | None = None
     library_version: int | None = None
+    # v0.19：材质标识（UI 视口按材质着色；权威规则在内核 materials.py）
+    material: str | None = None
+    material_color: list[float] | None = None
 
 
 class ArtifactSet(BaseModel):

@@ -3,14 +3,19 @@ import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import { OBJLoader } from "three/examples/jsm/loaders/OBJLoader.js";
 import { STLLoader } from "three/examples/jsm/loaders/STLLoader.js";
-import { RoomEnvironment } from "three/examples/jsm/environments/RoomEnvironment.js";
+import { toCreasedNormals } from "three/examples/jsm/utils/BufferGeometryUtils.js";
 import { useT } from "./i18n";
+import { colorFromRgb, resolveCadMaterial, resolveCadMaterialFromName } from "./materials";
 
 export type AssemblyModel = {
   name: string;
   url: string;
   position?: number[] | null;
   rotationDeg?: [number, number[]] | null;
+  /** v0.19：材质键（内核推断，后端 manifest 写入）；缺失时按零件名回退。 */
+  material?: string | null;
+  /** v0.19：材质基色 [r,g,b]（0..1）；缺失时用材质表色。 */
+  color?: number[] | null;
 };
 
 type Props = {
@@ -33,27 +38,66 @@ type ViewStatus =
   | "loading_stl"
   | "stl_loaded"
   | "load_failed";
+type Projection = "ortho" | "perspective";
+type Quality = "high" | "standard";
 
-// 装配分色板（按件轮换）：CAD 工程色，饱和度提高避免"发灰发粉"
-const ASSEMBLY_COLORS = [0x9fb4c4, 0x4f86b8, 0xc99a4b, 0x59a06f, 0x8f6fb0, 0x4fa09a, 0xb06f6f, 0x6f7fb0];
-// v0.14.1 渲染升级常量（首版 clearcoat+高 env 强度导致泛白洗色，收敛为扎实钢件）
-const STEEL = { metalness: 0.32, roughness: 0.52, clearcoat: 0.12, envMapIntensity: 0.55 };
-const EDGE_COLOR = 0xa8bfd4;
-const EDGE_OPACITY = 0.35;
-const EDGE_MAX_VERTICES = 300000; // 超过则跳过棱边线（47MB 齿轮 STL 的三角网会卡死）
+// v0.19 工程 CAD 视口常量
+const BACKGROUND = 0x232d3a;        // 中性科技灰蓝（非纯黑，接近 CAD 视口）
+const CAD_SKY = 0xeef3f8;           // 半球天光
+const CAD_GROUND = 0x3a4552;        // 半球地光
+const CAD_KEY = 0xffffff;           // 主光
+const CAD_FILL = 0xa8ccea;          // 冷色补光（塑形）
+const EDGE_COLOR = 0x0d1722;        // 深色特征棱线
+const EDGE_OPACITY = 0.8;
+const CREASE_ANGLE = THREE.MathUtils.degToRad(30);   // >30° 视为棱边，曲面平滑
+const EDGE_THRESHOLD = 20;          // EdgesGeometry 二面角阈值（度）
+const EDGE_MAX_VERTICES = 400000;   // 高画质棱线上限（超过跳过，防卡顿）
+const EDGE_MAX_VERTICES_STD = 150000; // 标准画质上限
+const SMOOTH_MAX_VERTICES = 800000;  // 高于此值不做 crease 平滑（退普通法线）
+const DPR_MAX = 2;
+const QUALITY_KEY = "mechcad_viewport_quality";
+
+function readStoredQuality(): Quality {
+  try {
+    return localStorage.getItem(QUALITY_KEY) === "standard" ? "standard" : "high";
+  } catch {
+    return "high";
+  }
+}
+
+function readStoredProjection(): Projection {
+  try {
+    return localStorage.getItem("mechcad_viewport_projection") === "perspective" ? "perspective" : "ortho";
+  } catch {
+    return "ortho";
+  }
+}
 
 export default function Viewport({ objUrl, stlUrl, breadcrumb, statusLabel, models, hidden, selected }: Props) {
   const t = useT();
   const mountRef = useRef<HTMLDivElement | null>(null);
   const cameraRef = useRef<THREE.PerspectiveCamera | null>(null);
+  const orthoCameraRef = useRef<THREE.OrthographicCamera | null>(null);
   const controlsRef = useRef<OrbitControls | null>(null);
   const modelRef = useRef<THREE.Object3D | null>(null);
   const boundsRef = useRef<THREE.Box3 | null>(null);
+  const sceneRef = useRef<THREE.Scene | null>(null);
+  const rendererRef = useRef<THREE.WebGLRenderer | null>(null);
+  const clipPlanesRef = useRef<THREE.Plane[]>([]);
+  // viewMode 存 ref：切线框不重建场景（旧实现的依赖数组会导致重下载模型）
+  const wireframeRef = useRef(false);
   const [status, setStatus] = useState<ViewStatus>("waiting");
   const [viewMode, setViewMode] = useState<"shaded" | "wireframe">("shaded");
+  const [projection, setProjection] = useState<Projection>(readStoredProjection);
+  const [quality, setQuality] = useState<Quality>(readStoredQuality);
+  const [sectionOn, setSectionOn] = useState(false);
+  const [sectionAxis, setSectionAxis] = useState<"x" | "y" | "z">("y");
+  const [sectionOffset, setSectionOffset] = useState(0);
+  const [sectionFlip, setSectionFlip] = useState(false);
   const modelsKey = useMemo(() => JSON.stringify(models || []), [models]);
   const loaderKey = useMemo(() => `${objUrl || ""}:${stlUrl || ""}:${modelsKey}`, [objUrl, stlUrl, modelsKey]);
 
+  // ---------------- 场景搭建（几何加载 + 相机 + 光照） ----------------
   useEffect(() => {
     const mount = mountRef.current;
     if (!mount) {
@@ -63,48 +107,56 @@ export default function Viewport({ objUrl, stlUrl, breadcrumb, statusLabel, mode
     const width = Math.max(1, mount.clientWidth);
     const height = Math.max(1, mount.clientHeight);
     const scene = new THREE.Scene();
-    scene.background = new THREE.Color(0x0a1c36);
+    scene.background = new THREE.Color(BACKGROUND);
+    sceneRef.current = scene;
 
-    const camera = new THREE.PerspectiveCamera(40, width / height, 0.1, 4000);
-    camera.position.set(110, 90, 110);
-    cameraRef.current = camera;
+    const perspective = new THREE.PerspectiveCamera(40, width / height, 0.1, 8000);
+    perspective.position.set(110, 90, 110);
+    cameraRef.current = perspective;
+    // 正交相机（工程视图默认）：frustum 由 fitCamera 依据模型尺寸设定
+    const ortho = new THREE.OrthographicCamera(-1, 1, 1, -1, -4000, 8000);
+    ortho.position.copy(perspective.position);
+    orthoCameraRef.current = ortho;
 
-    const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+    const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: "high-performance" });
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, DPR_MAX));
     renderer.setSize(width, height);
-    renderer.setPixelRatio(window.devicePixelRatio || 1);
-    renderer.setClearColor(0x0a1c36, 1);
-    renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    renderer.toneMappingExposure = 0.95;
+    renderer.setClearColor(BACKGROUND, 1);
+    renderer.outputColorSpace = THREE.SRGBColorSpace;
+    renderer.toneMapping = THREE.ACESFilmicToneMapping;  // 压缩高光，避免白件过曝
+    renderer.toneMappingExposure = 1.15;
+    renderer.localClippingEnabled = true;            // 剖切
     mount.innerHTML = "";
     mount.appendChild(renderer.domElement);
+    rendererRef.current = renderer;
 
-    // v0.14.1 环境光照：RoomEnvironment 经 PMREM 生成反射环境，钢件质感的关键
-    const pmrem = new THREE.PMREMGenerator(renderer);
-    const envTexture = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
-    scene.environment = envTexture;
+    const activeCamera = (): THREE.Camera =>
+      readStoredProjection() === "ortho" ? ortho : perspective;
 
-    const controls = new OrbitControls(camera, renderer.domElement);
+    const controls = new OrbitControls(activeCamera(), renderer.domElement);
     controls.enableDamping = true;
+    controls.dampingFactor = 0.12;
     controlsRef.current = controls;
 
-    // env 已提供环境填充光，直射光降为塑形主光 + 冷色轮廓光
-    const ambient = new THREE.AmbientLight(0xdce6f0, 0.45);
+    // CAD 光棚：半球环境光 + 主光 + 冷色补光（不做阴影/反射，保证读图清晰）
+    const hemi = new THREE.HemisphereLight(CAD_SKY, CAD_GROUND, 1.35);
+    scene.add(hemi);
+    const ambient = new THREE.AmbientLight(0xdfe7f0, 0.28);
     scene.add(ambient);
+    const key = new THREE.DirectionalLight(CAD_KEY, 1.9);
+    key.position.set(1, 1.6, 0.9);
+    scene.add(key);
+    const fill = new THREE.DirectionalLight(CAD_FILL, 0.85);
+    fill.position.set(-0.9, 0.5, -0.7);
+    scene.add(fill);
+    const rim = new THREE.DirectionalLight(CAD_FILL, 0.55);
+    rim.position.set(0.2, -0.8, 0.6);
+    scene.add(rim);
 
-    const dir1 = new THREE.DirectionalLight(0xbfe6f5, 1.3);
-    dir1.position.set(90, 140, 90);
-    scene.add(dir1);
-
-    const dir2 = new THREE.DirectionalLight(0x38c3e8, 0.55);
-    dir2.position.set(-80, 60, -60);
-    scene.add(dir2);
-
-    const grid = new THREE.GridHelper(220, 22, 0x2c6f8c, 0x1c4a66);
-    grid.material.opacity = 0.35;
-    grid.material.transparent = true;
+    const grid = new THREE.GridHelper(400, 40, 0x3c516b, 0x28384a);
+    (grid.material as THREE.Material).opacity = 0.5;
+    (grid.material as THREE.Material).transparent = true;
     scene.add(grid);
-
-    scene.add(new THREE.AxesHelper(48));
 
     let disposed = false;
     let frameId = 0;
@@ -114,7 +166,7 @@ export default function Viewport({ objUrl, stlUrl, breadcrumb, statusLabel, mode
         return;
       }
       controls.update();
-      renderer.render(scene, camera);
+      renderer.render(scene, activeCamera());
       frameId = window.requestAnimationFrame(animate);
     };
     animate();
@@ -126,67 +178,107 @@ export default function Viewport({ objUrl, stlUrl, breadcrumb, statusLabel, mode
       const maxDim = Math.max(size.x, size.y, size.z, 20);
       const distance = maxDim * 1.9;
       boundsRef.current = box;
-      camera.near = Math.max(0.1, maxDim / 100);
-      camera.far = Math.max(2000, distance * 8);
-      camera.updateProjectionMatrix();
-      camera.position.set(center.x + distance, center.y + distance, center.z + distance);
+      perspective.near = Math.max(0.1, maxDim / 100);
+      perspective.far = Math.max(4000, distance * 10);
+      perspective.updateProjectionMatrix();
+      applyOrthoFrustum(center, size, distance);
+      const cam = activeCamera();
+      cam.position.set(center.x + distance, center.y + distance, center.z + distance);
       controls.target.copy(center);
       controls.update();
-      camera.lookAt(center);
+      cam.lookAt(center);
     };
 
-    const applyWireframe = (root: THREE.Object3D, enabled: boolean) => {
-      root.traverse((child) => {
-        const mesh = child as THREE.Mesh;
-        if (!mesh.isMesh) {
-          return;
-        }
-        const materials = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
-        materials.forEach((material) => {
-          if (material && "wireframe" in material) {
-            (material as THREE.MeshStandardMaterial).wireframe = enabled;
-            material.needsUpdate = true;
-          }
-        });
-      });
+    const applyOrthoFrustum = (center: THREE.Vector3, size: THREE.Vector3, distance: number) => {
+      const maxDim = Math.max(size.x, size.y, size.z, 20);
+      const half = maxDim * 0.75;
+      const aspect = Math.max(1, mount.clientWidth) / Math.max(1, mount.clientHeight);
+      ortho.left = -half * aspect;
+      ortho.right = half * aspect;
+      ortho.top = half;
+      ortho.bottom = -half;
+      ortho.near = -distance * 4;
+      ortho.far = distance * 6;
+      ortho.position.set(center.x + distance, center.y + distance, center.z + distance);
+      ortho.updateProjectionMatrix();
     };
 
     const clearModel = () => {
       if (modelRef.current) {
         scene.remove(modelRef.current);
-        // v0.14.1 内存治理：释放 geometry/材质/边线，避免装配模式反复切换泄漏
-        modelRef.current.traverse((child) => {
-          const mesh = child as THREE.Mesh;
-          if (mesh.geometry) {
-            mesh.geometry.dispose();
-          }
-          if (mesh.material) {
-            (Array.isArray(mesh.material) ? mesh.material : [mesh.material]).forEach((material) => material.dispose());
-          }
-        });
+        disposeObject(modelRef.current);
         modelRef.current = null;
       }
     };
 
-    const makeSteelMaterial = (color: number) => {
-      const material = new THREE.MeshPhysicalMaterial({ color, ...STEEL });
-      material.wireframe = viewMode === "wireframe";
+    const disposeObject = (root: THREE.Object3D) => {
+      root.traverse((child) => {
+        const mesh = child as THREE.Mesh;
+        if (mesh.geometry) {
+          mesh.geometry.dispose();
+        }
+        if (mesh.material) {
+          const mats = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
+          mats.forEach((material) => {
+            // OBJ 可能带纹理，一并释放
+            const anyMat = material as THREE.MeshStandardMaterial;
+            if (anyMat.map) {
+              anyMat.map.dispose();
+            }
+            if ((anyMat as unknown as { normalMap?: THREE.Texture }).normalMap) {
+              (anyMat as unknown as { normalMap: THREE.Texture }).normalMap.dispose();
+            }
+            material.dispose();
+          });
+        }
+      });
+    };
+
+    // STL 三角网顶点焊接 + crease 法线：曲面平滑、棱边保持锋利
+    const smoothGeometry = (geometry: THREE.BufferGeometry) => {
+      const position = geometry.getAttribute("position");
+      if (!position || position.count > SMOOTH_MAX_VERTICES) {
+        geometry.computeVertexNormals();
+        return geometry;
+      }
+      try {
+        return toCreasedNormals(geometry, CREASE_ANGLE);
+      } catch {
+        geometry.computeVertexNormals();
+        return geometry;
+      }
+    };
+
+    const makeCadMaterial = (color: number, roughness: number) => {
+      const material = new THREE.MeshStandardMaterial({
+        color,
+        roughness,
+        metalness: 0,
+        flatShading: false,
+        clipShadows: false,
+      });
+      material.clippingPlanes = clipPlanesRef.current;
+      material.wireframe = wireframeRef.current;
       return material;
     };
 
-    // CAD 棱边线：STL 面片间夹角小（平面共面/曲面细密）会被阈值滤掉，
-    // 只留真实特征棱线；超大网格跳过防卡顿。挂到 mesh.userData.edges 随显隐联动。
-    const attachEdgeLines = (mesh: THREE.Mesh) => {
+    const attachEdgeLines = (mesh: THREE.Mesh, maxVertices: number) => {
       const position = mesh.geometry?.getAttribute?.("position");
-      if (!position || position.count > EDGE_MAX_VERTICES) {
+      if (!position || position.count > maxVertices) {
         return;
       }
       try {
         const edges = new THREE.LineSegments(
-          new THREE.EdgesGeometry(mesh.geometry, 24),
-          new THREE.LineBasicMaterial({ color: EDGE_COLOR, transparent: true, opacity: EDGE_OPACITY }),
+          new THREE.EdgesGeometry(mesh.geometry, EDGE_THRESHOLD),
+          new THREE.LineBasicMaterial({
+            color: EDGE_COLOR,
+            transparent: true,
+            opacity: EDGE_OPACITY,
+            clippingPlanes: clipPlanesRef.current,
+          }),
         );
         edges.userData.isEdgeHelper = true;
+        edges.renderOrder = 1;
         mesh.add(edges);
         mesh.userData.edges = edges;
       } catch {
@@ -196,18 +288,29 @@ export default function Viewport({ objUrl, stlUrl, breadcrumb, statusLabel, mode
 
     const loadModel = async () => {
       clearModel();
+      const q = readStoredQuality();
+      const edgeMax = q === "high" ? EDGE_MAX_VERTICES : EDGE_MAX_VERTICES_STD;
+
       // v0.14 F2a 装配预览：逐件加载、按位姿摆放（不做 center()——会摧毁位姿）
       if (models && models.length) {
         setStatus("loading_stl");
         const group = new THREE.Group();
+        const loader = new STLLoader();
         try {
           for (let index = 0; index < models.length; index += 1) {
             const entry = models[index];
-            const geometry = await new STLLoader().loadAsync(entry.url);
+            // 并行无益（顺序建组 + 位姿）；逐件 await 保证失败可定位
+            const raw = await loader.loadAsync(entry.url);
+            const geometry = smoothGeometry(raw);
             geometry.computeBoundingBox();
-            const mesh = new THREE.Mesh(geometry, makeSteelMaterial(ASSEMBLY_COLORS[index % ASSEMBLY_COLORS.length]));
+            // v0.19：材质 —— 后端 manifest 权威（material + material_color）；
+            // 缺失时按零件名回退推断，再回退中性灰。
+            const key = entry.material || resolveCadMaterialFromName(entry.name);
+            const cad = resolveCadMaterial(key);
+            const color = colorFromRgb(entry.color ?? null, key);
+            const mesh = new THREE.Mesh(geometry, makeCadMaterial(color, cad.roughness));
             mesh.userData.partName = entry.name;
-            attachEdgeLines(mesh);
+            attachEdgeLines(mesh, edgeMax);
             const position = entry.position;
             if (Array.isArray(position) && position.length === 3) {
               mesh.position.set(position[0], position[1], position[2]);
@@ -228,6 +331,7 @@ export default function Viewport({ objUrl, stlUrl, breadcrumb, statusLabel, mode
           setStatus("stl_loaded");
           return;
         } catch {
+          disposeObject(group);
           setStatus("load_failed");
           return;
         }
@@ -236,10 +340,17 @@ export default function Viewport({ objUrl, stlUrl, breadcrumb, statusLabel, mode
         setStatus("loading_obj");
         try {
           const object = await new OBJLoader().loadAsync(objUrl);
+          object.traverse((child) => {
+            const mesh = child as THREE.Mesh;
+            if (mesh.isMesh) {
+              mesh.userData.partName = "obj";
+              attachEdgeLines(mesh, edgeMax);
+            }
+          });
           modelRef.current = object;
           scene.add(object);
           fitCamera(object);
-          applyWireframe(object, viewMode === "wireframe");
+          applyWireframe(object, wireframeRef.current);
           setStatus("obj_loaded");
           return;
         } catch {
@@ -249,11 +360,15 @@ export default function Viewport({ objUrl, stlUrl, breadcrumb, statusLabel, mode
       if (stlUrl) {
         setStatus("loading_stl");
         try {
-          const geometry = await new STLLoader().loadAsync(stlUrl);
+          const raw = await new STLLoader().loadAsync(stlUrl);
+          const geometry = smoothGeometry(raw);
           geometry.computeBoundingBox();
           geometry.center();
-          const mesh = new THREE.Mesh(geometry, makeSteelMaterial(0x6f8a83));
-          attachEdgeLines(mesh);
+          const mesh = new THREE.Mesh(
+            geometry,
+            makeCadMaterial(resolveCadMaterial("steel").color, resolveCadMaterial("steel").roughness),
+          );
+          attachEdgeLines(mesh, edgeMax);
           modelRef.current = mesh;
           scene.add(mesh);
           fitCamera(mesh);
@@ -269,33 +384,140 @@ export default function Viewport({ objUrl, stlUrl, breadcrumb, statusLabel, mode
 
     void loadModel();
 
+    // ResizeObserver：IDE 面板宽度变化也要重设（旧实现只听 window resize）
     const onResize = () => {
       const nextWidth = Math.max(1, mount.clientWidth);
       const nextHeight = Math.max(1, mount.clientHeight);
-      camera.aspect = nextWidth / nextHeight;
-      camera.updateProjectionMatrix();
+      const aspect = nextWidth / nextHeight;
+      perspective.aspect = aspect;
+      perspective.updateProjectionMatrix();
+      if (ortho) {
+        const half = (ortho.top - ortho.bottom) / 2;
+        ortho.left = -half * aspect;
+        ortho.right = half * aspect;
+        ortho.updateProjectionMatrix();
+      }
       renderer.setSize(nextWidth, nextHeight);
     };
-
+    const resizeObserver = typeof ResizeObserver !== "undefined" ? new ResizeObserver(onResize) : null;
+    resizeObserver?.observe(mount);
     window.addEventListener("resize", onResize);
 
     return () => {
       disposed = true;
+      resizeObserver?.disconnect();
       window.removeEventListener("resize", onResize);
       window.cancelAnimationFrame(frameId);
       controls.dispose();
-      pmrem.dispose();
-      envTexture.dispose();
+      clearModel();
       renderer.dispose();
+      renderer.forceContextLoss?.();
       mount.innerHTML = "";
       cameraRef.current = null;
+      orthoCameraRef.current = null;
       controlsRef.current = null;
-      modelRef.current = null;
+      sceneRef.current = null;
+      rendererRef.current = null;
       boundsRef.current = null;
     };
-  }, [loaderKey, objUrl, stlUrl, modelsKey, viewMode]);
+  }, [loaderKey, objUrl, stlUrl, modelsKey]);
 
-  // v0.14 F2a：装配显隐 + 点选高亮（不重载，只改材质/可见性；边线随父件自动隐藏）
+  // ---------------- 质量档位变化：只调整 DPR，不重建 ----------------
+  useEffect(() => {
+    wireframeRef.current = false;
+    setViewMode("shaded");
+    const renderer = rendererRef.current;
+    if (renderer) {
+      const dpr = quality === "high" ? Math.min(window.devicePixelRatio || 1, DPR_MAX) : 1;
+      renderer.setPixelRatio(dpr);
+    }
+    try {
+      localStorage.setItem(QUALITY_KEY, quality);
+    } catch {
+      /* 忽略存储失败 */
+    }
+  }, [quality]);
+
+  // ---------------- 投影切换：重绑 OrbitControls，保留 target/视向 ----------------
+  useEffect(() => {
+    const controls = controlsRef.current;
+    const renderer = rendererRef.current;
+    const scene = sceneRef.current;
+    if (!controls || !renderer || !scene) {
+      return;
+    }
+    const next = projection === "ortho" ? orthoCameraRef.current : cameraRef.current;
+    if (!next) {
+      return;
+    }
+    // 保留当前视向与目标
+    const prev = controls.object as THREE.Camera;
+    const dir = new THREE.Vector3().subVectors(prev.position, controls.target);
+    next.position.copy(controls.target.clone().add(dir));
+    if (next instanceof THREE.OrthographicCamera) {
+      const box = boundsRef.current;
+      const size = box ? box.getSize(new THREE.Vector3()) : new THREE.Vector3(100, 100, 100);
+      const maxDim = Math.max(size.x, size.y, size.z, 20);
+      const aspect = Math.max(1, (renderer.domElement.clientWidth || 1)) /
+        Math.max(1, (renderer.domElement.clientHeight || 1));
+      const half = maxDim * 0.75;
+      next.left = -half * aspect;
+      next.right = half * aspect;
+      next.top = half;
+      next.bottom = -half;
+      next.near = -maxDim * 8;
+      next.far = maxDim * 12;
+      next.updateProjectionMatrix();
+    }
+    next.lookAt(controls.target);
+    controls.object = next;
+    controls.update();
+    try {
+      localStorage.setItem("mechcad_viewport_projection", projection);
+    } catch {
+      /* 忽略 */
+    }
+  }, [projection, status]);
+
+  // ---------------- 剖切平面（clippingPlanes 直接改材质数组引用） ----------------
+  useEffect(() => {
+    const scene = sceneRef.current;
+    if (!scene) {
+      return;
+    }
+    const box = boundsRef.current;
+    const center = box ? box.getCenter(new THREE.Vector3()) : new THREE.Vector3();
+    const size = box ? box.getSize(new THREE.Vector3()) : new THREE.Vector3(100, 100, 100);
+    const normal =
+      sectionAxis === "x" ? new THREE.Vector3(-1, 0, 0)
+        : sectionAxis === "z" ? new THREE.Vector3(0, 0, -1)
+          : new THREE.Vector3(0, -1, 0);
+    if (sectionFlip) {
+      normal.negate();
+    }
+    const halfExtent = (sectionAxis === "x" ? size.x : sectionAxis === "z" ? size.z : size.y) / 2;
+    const base = sectionAxis === "x" ? center.x : sectionAxis === "z" ? center.z : center.y;
+    // three 裁剪保留 normal·p + constant >= 0 的一侧。
+    // normal 指向"被切掉"的方向；constant = 切面在该轴上的坐标（翻转则取负）。
+    const cut = base + sectionOffset * halfExtent;
+    const plane = new THREE.Plane(normal, sectionFlip ? -cut : cut);
+    clipPlanesRef.current = sectionOn ? [plane] : [];
+    // 应用到所有零件材质与棱线材质（棱线同步被切）
+    scene.traverse((child) => {
+      const mesh = child as THREE.Mesh;
+      if (!mesh.material) {
+        return;
+      }
+      const mats = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
+      mats.forEach((material) => {
+        const anyMat = material as THREE.Material & { clippingPlanes?: THREE.Plane[] };
+        anyMat.clippingPlanes = clipPlanesRef.current;
+        anyMat.needsUpdate = true;
+      });
+    });
+  }, [sectionOn, sectionAxis, sectionOffset, sectionFlip, status, modelsKey]);
+
+  // ---------------- 装配显隐 + 点选高亮（不重载，只改材质/可见性） ----------------
   useEffect(() => {
     const root = modelRef.current;
     if (!root) {
@@ -310,22 +532,21 @@ export default function Viewport({ objUrl, stlUrl, breadcrumb, statusLabel, mode
       const materials = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
       const isSelected = String(mesh.userData.partName) === (selected || "");
       materials.forEach((material) => {
-        const physical = material as THREE.MeshPhysicalMaterial;
-        if (physical && "emissive" in physical) {
-          physical.emissive.setHex(isSelected ? 0x2fd8cf : 0x000000);
-          physical.emissiveIntensity = isSelected ? 0.55 : 1;
+        const standard = material as THREE.MeshStandardMaterial;
+        if (standard && "emissive" in standard) {
+          standard.emissive.setHex(isSelected ? 0x2fd8cf : 0x000000);
+          standard.emissiveIntensity = isSelected ? 0.45 : 1;
         }
       });
     });
   }, [hidden, selected, status]);
 
   const setPreset = (preset: ViewPreset) => {
-    const camera = cameraRef.current;
     const controls = controlsRef.current;
-    if (!camera || !controls) {
+    if (!controls) {
       return;
     }
-
+    const camera = controls.object;
     const center = controls.target.clone();
     const bounds = boundsRef.current;
     const size = bounds ? bounds.getSize(new THREE.Vector3()) : new THREE.Vector3(120, 120, 120);
@@ -358,24 +579,30 @@ export default function Viewport({ objUrl, stlUrl, breadcrumb, statusLabel, mode
     camera.lookAt(controls.target);
   };
 
+  const applyWireframe = (root: THREE.Object3D, enabled: boolean) => {
+    root.traverse((child) => {
+      const mesh = child as THREE.Mesh;
+      if (!mesh.isMesh) {
+        return;
+      }
+      const materials = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
+      materials.forEach((material) => {
+        if (material && "wireframe" in material) {
+          (material as THREE.MeshStandardMaterial).wireframe = enabled;
+          material.needsUpdate = true;
+        }
+      });
+    });
+  };
+
   const toggleWireframe = () => {
     const root = modelRef.current;
+    const next = !wireframeRef.current;
+    wireframeRef.current = next;
     if (root) {
-      root.traverse((child) => {
-        const mesh = child as THREE.Mesh;
-        if (!mesh.isMesh) {
-          return;
-        }
-        const materials = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
-        materials.forEach((material) => {
-          if (material && "wireframe" in material) {
-            (material as THREE.MeshStandardMaterial).wireframe = viewMode !== "wireframe";
-            material.needsUpdate = true;
-          }
-        });
-      });
+      applyWireframe(root, next);
     }
-    setViewMode((current) => (current === "wireframe" ? "shaded" : "wireframe"));
+    setViewMode(next ? "wireframe" : "shaded");
   };
 
   const statusText = t(`viewport.${status}`);
@@ -402,6 +629,22 @@ export default function Viewport({ objUrl, stlUrl, breadcrumb, statusLabel, mode
         <button type="button" className={viewMode === "wireframe" ? "active" : ""} onClick={toggleWireframe}>
           {t("viewport.wireframe")}
         </button>
+        <button
+          type="button"
+          className={projection === "ortho" ? "active" : ""}
+          title={t("viewport.projection.title")}
+          onClick={() => setProjection((p) => (p === "ortho" ? "perspective" : "ortho"))}
+        >
+          {projection === "ortho" ? t("viewport.projection.ortho") : t("viewport.projection.perspective")}
+        </button>
+        <button
+          type="button"
+          className={quality === "high" ? "active" : ""}
+          title={t("viewport.quality.title")}
+          onClick={() => setQuality((q) => (q === "high" ? "standard" : "high"))}
+        >
+          {quality === "high" ? t("viewport.quality.high") : t("viewport.quality.standard")}
+        </button>
       </div>
 
       <div className="viewport-breadcrumb">{breadcrumb || t("viewport.breadcrumb")}</div>
@@ -416,6 +659,39 @@ export default function Viewport({ objUrl, stlUrl, breadcrumb, statusLabel, mode
       </div>
 
       <div className="viewport-canvas" ref={mountRef} />
+
+      <div className="viewport-section">
+        <label className="section-toggle">
+          <input type="checkbox" checked={sectionOn} onChange={(e) => setSectionOn(e.target.checked)} />
+          {t("viewport.section")}
+        </label>
+        {sectionOn && (
+          <div className="section-controls">
+            {(["y", "x", "z"] as const).map((axis) => (
+              <button
+                key={axis}
+                type="button"
+                className={sectionAxis === axis ? "active" : ""}
+                onClick={() => setSectionAxis(axis)}
+              >
+                {axis.toUpperCase()}
+              </button>
+            ))}
+            <input
+              type="range"
+              min={-1}
+              max={1}
+              step={0.01}
+              value={sectionOffset}
+              aria-label={t("viewport.section.offset")}
+              onChange={(e) => setSectionOffset(Number(e.target.value))}
+            />
+            <button type="button" onClick={() => setSectionFlip((f) => !f)} title={t("viewport.section.flip")}>
+              ⇄
+            </button>
+          </div>
+        )}
+      </div>
 
       <div className="viewport-axes" aria-label={t("viewport.axes")}>
         <span className="axis-x">X</span>

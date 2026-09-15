@@ -1625,6 +1625,7 @@ class AgentLoop:
             shutil.copyfile(step_path, lib_dir / lib_step)
             shutil.copyfile(stl_path, lib_dir / lib_stl)
             bom_item = self._bom_entry(part) or {}
+            from backend.agent.materials import material_color, resolve_material
             entry = {
                 "name": part, "version": version, "run_id": self.run_dir.name,
                 "step_file": lib_step, "stl_file": lib_stl,
@@ -1633,6 +1634,9 @@ class AgentLoop:
                 "contract_passed": True,
                 "role": bom_item.get("role") or "",
                 "depends_on": bom_item.get("depends_on") or [],
+                # v0.19：材质标识（供 UI 视口按材质着色；权威规则在内核 materials.py）
+                "material": resolve_material(part),
+                "material_color": material_color(part),
                 # v2.17 P1-7 生命周期：active 才进装配；同名返工替换条目，
                 # 被替换的旧版本文件保留在库目录（历史可回溯）但不再 active。
                 "status": "active",
@@ -1642,7 +1646,8 @@ class AgentLoop:
             if self.session is not None:
                 self.session.update_part_entry(entry)
             return {"version": version, "step_file": lib_step, "stl_file": lib_stl,
-                    "pose": entry["pose"]}
+                    "pose": entry["pose"], "material": entry["material"],
+                    "material_color": entry["material_color"]}
         except Exception as exc:  # noqa: BLE001 —— 库写失败不阻断逐件交付
             self.logs.append(f"零件库写入失败（不影响 run 归档）: {type(exc).__name__}: {exc}")
             return None
@@ -2128,6 +2133,9 @@ class AgentLoop:
             "library_step_file": library.get("step_file"),
             "library_stl_file": library.get("stl_file"),
             "library_version": library.get("version"),
+            # v0.19：材质标识（UI 视口按材质着色）
+            "material": library.get("material"),
+            "material_color": library.get("material_color"),
             "pose": library.get("pose"),
         }
         self._part_built_via = "ops"  # 下一件默认原子 op

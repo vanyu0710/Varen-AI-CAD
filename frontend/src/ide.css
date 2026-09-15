@@ -673,6 +673,55 @@
   font-size: 11px;
 }
 
+/* v0.19 剖切控制条（左下角，CAD 视口） */
+.viewport-section {
+  position: absolute;
+  z-index: 4;
+  left: 12px;
+  bottom: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: rgba(10, 22, 42, 0.82);
+  color: var(--ink-soft);
+  font-size: 11px;
+  backdrop-filter: blur(6px);
+}
+.viewport-section .section-toggle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+  user-select: none;
+}
+.viewport-section .section-controls {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.viewport-section .section-controls button {
+  min-width: 22px;
+  padding: 2px 6px;
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  background: transparent;
+  color: var(--ink-soft);
+  font-size: 11px;
+  cursor: pointer;
+}
+.viewport-section .section-controls button.active {
+  background: var(--jade);
+  border-color: var(--jade);
+  color: #06162f;
+}
+.viewport-section .section-controls input[type="range"] {
+  width: 110px;
+  accent-color: var(--jade);
+}
+
 /* ===== Startup screen ===== */
 
 .startup-screen {
@@ -2362,3 +2411,87 @@
   color: var(--ink-muted);
   font-size: 11px;
 }
+
+/* Modeling workbench: keep evidence compact and leave room for geometry. */
+.chat-column .chat-row { grid-template-columns: minmax(0, 1fr) auto auto; align-items: center; }
+.chat-column .chat-prompt { display: none; }
+.chat-column textarea.chat-input {
+  grid-column: 1 / -1; width: 100%; min-height: 88px; max-height: 180px;
+  resize: vertical; padding: 10px 12px; font: inherit; line-height: 1.55;
+  color: var(--ink); background: rgba(4, 13, 26, .65); border: 1px solid var(--line);
+  border-radius: 8px; box-sizing: border-box;
+}
+.chat-column .chat-plan-toggle { justify-self: start; }
+.chat-column .chat-stream { min-height: 80px; overscroll-behavior: contain; }
+.chat-column .plan-card { max-height: 28%; overflow: auto; }
+.plan-card > summary, .part-downloads > summary, .assembly-part-details > summary {
+  cursor: pointer; color: var(--ink-soft); font-size: 12px; padding: 4px 0;
+}
+.plan-card[open] > summary { margin-bottom: 8px; }
+.chat-jump-latest { flex: none; align-self: center; margin: 6px; font-size: 12px; }
+.part-downloads { flex: none; margin: 0 12px; }
+.part-downloads .artifact-row-parts { max-height: 84px; overflow: auto; margin: 0; padding: 6px 0; }
+.assembly-panel { flex: none; margin-top: 4px; }
+.assembly-panel-head, .assembly-view-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.assembly-metrics { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 8px; margin: 8px 0; }
+.assembly-metrics > div { border-left: 2px solid var(--line); padding-left: 8px; min-width: 0; }
+.assembly-metrics dt { color: var(--ink-soft); font-size: 11px; }
+.assembly-metrics dd { margin: 3px 0 0; font-size: 16px; font-variant-numeric: tabular-nums; }
+.assembly-metrics .warn, .assembly-check-error { color: #e0a05f; }
+.assembly-scope { color: var(--ink-soft); font-size: 11px; line-height: 1.4; margin: 6px 0; }
+.assembly-view-actions > span { flex: 1; min-width: 90px; overflow-wrap: anywhere; }
+.assembly-view-actions button { min-height: 28px; padding: 3px 8px; font-size: 11px; }
+.assembly-part-details { margin-top: 4px; }
+.assembly-part-details[open] .assembly-parts { padding-top: 6px; }
+.assembly-part-name { overflow-wrap: anywhere; }
+.workspace-shell .viewport-shell { min-height: 180px; }
+.workspace-main .structure-panel:not(.collapsed) { height: clamp(130px, 22vh, 210px); }
+.ide-shell.focus-mode .status-banner { display: block; }
+.ide-shell :is(button, summary, textarea, input, a):focus-visible { outline: 2px solid var(--jade); outline-offset: 2px; }
+@media (max-width: 800px) {
+  .ide-shell { height: auto; min-height: 100dvh; overflow: auto; }
+  .workspace-shell { flex-direction: column; }
+  .workspace-main { flex: none; }
+  .workspace-shell .workspace-center { flex: none; overflow: visible; }
+  .workspace-shell .viewport-shell { flex: none; height: 48vh; min-height: 280px; }
+  .chat-column { width: 100%; height: 650px; max-height: 85dvh; flex: none; }
+  .structure-tabs { flex-wrap: wrap; }
+  .assembly-metrics { gap: 4px; }
+  .assembly-panel { margin: 6px; }
+}
+@media (min-width: 801px) and (max-height: 800px) {
+  .workspace-shell .workspace-center { overflow-y: auto; }
+  .workspace-main .structure-panel:not(.collapsed) { height: 130px; }
+}
+
+/* Keep evidence controls in document flow; the viewport is the scarce canvas, not a dumping ground. */
+.workspace-shell .workspace-center > .artifact-row {
+  position: static;
+  z-index: auto;
+  flex: none;
+  align-self: flex-end;
+  margin: 6px 12px 0;
+  width: fit-content;
+  max-width: calc(100% - 24px);
+}
+.workspace-shell .workspace-center > .part-downloads .artifact-row-parts {
+  position: static;
+  width: auto;
+  max-width: none;
+  min-height: 0;
+  box-shadow: none;
+  background: transparent;
+  border: 0;
+  padding: 6px 0;
+}
+.workspace-shell .workspace-center > .part-downloads {
+  order: 2;
+}
+.workspace-shell .workspace-center > .assembly-panel { order: 3; }
+.workspace-shell .workspace-center > .bottom-statusbar { order: 4; }
+.workspace-shell .workspace-center > .viewport-shell { order: 1; }
+.workspace-shell .workspace-center > .artifact-row + .part-downloads,
+.workspace-shell .workspace-center > .part-downloads + .assembly-panel { margin-top: 0; }
+/* This footer is a status readout, so it must not cover the structure drawer. */
+.workspace-shell ~ .bottom-statusbar,
+.ide-shell > .bottom-statusbar { position: static; transform: none; left: auto; bottom: auto; z-index: auto; flex: none; align-self: center; margin: 6px 0; }

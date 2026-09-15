@@ -397,6 +397,9 @@ export type PartArtifact = {
   library_step_file?: string | null;
   library_stl_file?: string | null;
   library_version?: number | null;
+  // v0.19：材质标识（UI 视口按材质着色）
+  material?: string | null;
+  material_color?: number[] | null;
 };
 
 export type AssemblyPose = {
@@ -420,6 +423,9 @@ export type AssemblySummary = {
   render_file?: string | null;
   report_file?: string | null;
   parts_count: number;
+  hard_collision_count?: number | null;
+  expected_fit_count?: number | null;
+  expected_mesh_count?: number | null;
   total_pairs: number;
   interfering_count: number;
   exempted_count: number;

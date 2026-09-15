@@ -6,6 +6,14 @@ import { STLLoader } from "three/examples/jsm/loaders/STLLoader.js";
 import { toCreasedNormals } from "three/examples/jsm/utils/BufferGeometryUtils.js";
 import { useT } from "./i18n";
 import { colorFromRgb, resolveCadMaterial, resolveCadMaterialFromName } from "./materials";
+import {
+  TRANSPARENCY_LEVELS,
+  bodyOpacity,
+  clampMenuPos,
+  edgeOpacity,
+  pickPartName,
+  type TransparencyLevel,
+} from "./partVisual";
 
 export type AssemblyModel = {
   name: string;
@@ -94,6 +102,9 @@ export default function Viewport({ objUrl, stlUrl, breadcrumb, statusLabel, mode
   const [sectionAxis, setSectionAxis] = useState<"x" | "y" | "z">("y");
   const [sectionOffset, setSectionOffset] = useState(0);
   const [sectionFlip, setSectionFlip] = useState(false);
+  // v0.21 SW 式右键：逐零件透明度 / 本地隐藏（叠加在 App 传入的 hidden 之上）+ 上下文菜单
+  const [partVisuals, setPartVisuals] = useState<Record<string, { opacity: TransparencyLevel; hidden: boolean }>>({});
+  const [contextMenu, setContextMenu] = useState<{ x: number; y: number; partName: string } | null>(null);
   const modelsKey = useMemo(() => JSON.stringify(models || []), [models]);
   const loaderKey = useMemo(() => `${objUrl || ""}:${stlUrl || ""}:${modelsKey}`, [objUrl, stlUrl, modelsKey]);
 
@@ -368,6 +379,7 @@ export default function Viewport({ objUrl, stlUrl, breadcrumb, statusLabel, mode
             geometry,
             makeCadMaterial(resolveCadMaterial("steel").color, resolveCadMaterial("steel").roughness),
           );
+          mesh.userData.partName = "model";
           attachEdgeLines(mesh, edgeMax);
           modelRef.current = mesh;
           scene.add(mesh);
@@ -517,7 +529,7 @@ export default function Viewport({ objUrl, stlUrl, breadcrumb, statusLabel, mode
     });
   }, [sectionOn, sectionAxis, sectionOffset, sectionFlip, status, modelsKey]);
 
-  // ---------------- 装配显隐 + 点选高亮（不重载，只改材质/可见性） ----------------
+  // ---------------- 装配显隐 + 透明度 + 点选高亮（不重载，只改材质/可见性） ----------------
   useEffect(() => {
     const root = modelRef.current;
     if (!root) {
@@ -528,18 +540,169 @@ export default function Viewport({ objUrl, stlUrl, breadcrumb, statusLabel, mode
       if (!mesh.isMesh || !mesh.userData.partName || mesh.userData.isEdgeHelper) {
         return;
       }
-      mesh.visible = !(hidden || []).includes(String(mesh.userData.partName));
+      const partName = String(mesh.userData.partName);
+      const local = partVisuals[partName];
+      const isHidden = local?.hidden || (hidden || []).includes(partName);
+      mesh.visible = !isHidden;
+      const opacity = bodyOpacity(local?.opacity);
       const materials = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
-      const isSelected = String(mesh.userData.partName) === (selected || "");
+      const isSelected = partName === (selected || "");
       materials.forEach((material) => {
         const standard = material as THREE.MeshStandardMaterial;
         if (standard && "emissive" in standard) {
           standard.emissive.setHex(isSelected ? 0x2fd8cf : 0x000000);
           standard.emissiveIntensity = isSelected ? 0.45 : 1;
+          const transparent = opacity < 1 || isSelected;
+          standard.transparent = transparent;
+          standard.opacity = opacity;
+          // 半透明件关闭深度写入，避免排序闪烁；棱线仍可读。
+          standard.depthWrite = opacity >= 1;
+          standard.needsUpdate = true;
         }
       });
+      const edges = mesh.userData.edges as THREE.LineSegments | undefined;
+      if (edges) {
+        const lineMat = edges.material as THREE.LineBasicMaterial;
+        if (lineMat) {
+          lineMat.opacity = edgeOpacity(local?.opacity, EDGE_OPACITY);
+          lineMat.needsUpdate = true;
+        }
+      }
     });
-  }, [hidden, selected, status]);
+  }, [hidden, selected, partVisuals, status]);
+
+  // ---------------- 右键拾取 + 悬停高亮（v0.21 SW 式零件菜单） ----------------
+  useEffect(() => {
+    const canvas = mountRef.current?.querySelector("canvas") ?? null;
+    if (!canvas || status === "waiting" || status === "load_failed") {
+      return;
+    }
+    const raycaster = new THREE.Raycaster();
+    const ndc = new THREE.Vector2();
+    let hovered: THREE.Mesh | null = null;
+    let rightDown: { x: number; y: number } | null = null;
+    let lastHoverAt = 0;
+
+    const pick = (clientX: number, clientY: number): THREE.Mesh | null => {
+      const root = modelRef.current;
+      const controls = controlsRef.current;
+      if (!root || !controls) {
+        return null;
+      }
+      const rect = canvas.getBoundingClientRect();
+      ndc.set(((clientX - rect.left) / rect.width) * 2 - 1, -((clientY - rect.top) / rect.height) * 2 + 1);
+      raycaster.setFromCamera(ndc, controls.object);
+      const hits = raycaster.intersectObjects(root.children, true);
+      const name = pickPartName(hits.map((hit) => hit.object as unknown as Parameters<typeof pickPartName>[0][number]));
+      if (!name) {
+        return null;
+      }
+      return hits.map((hit) => hit.object as THREE.Mesh).find((obj) => obj.isMesh && obj.userData.partName === name) || null;
+    };
+
+    const setHover = (mesh: THREE.Mesh | null) => {
+      if (hovered === mesh) {
+        return;
+      }
+      const restore = (target: THREE.Mesh) => {
+        const name = String(target.userData.partName || "");
+        const isSelected = name === (selected || "");
+        if (isSelected) {
+          return; // 选中态由声明式 effect 管理，不清除
+        }
+        const mats = Array.isArray(target.material) ? target.material : [target.material];
+        mats.forEach((material) => {
+          const standard = material as THREE.MeshStandardMaterial;
+          if (standard && "emissive" in standard) {
+            standard.emissive.setHex(0x000000);
+          }
+        });
+      };
+      if (hovered) {
+        restore(hovered);
+      }
+      hovered = mesh;
+      canvas.style.cursor = mesh ? "pointer" : "";
+      if (mesh) {
+        const mats = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
+        mats.forEach((material) => {
+          const standard = material as THREE.MeshStandardMaterial;
+          if (standard && "emissive" in standard) {
+            standard.emissive.setHex(0x1d4a5c);
+          }
+        });
+      }
+    };
+
+    const onPointerDown = (event: PointerEvent) => {
+      if (event.button === 2) {
+        rightDown = { x: event.clientX, y: event.clientY };
+      }
+    };
+    const onPointerMove = (event: PointerEvent) => {
+      const now = performance.now();
+      if (now - lastHoverAt < 80) {
+        return; // 80ms 节流：装配大场景下射线开销可控
+      }
+      lastHoverAt = now;
+      setHover(pick(event.clientX, event.clientY));
+    };
+    const onPointerLeave = () => setHover(null);
+    const onContextMenu = (event: MouseEvent) => {
+      event.preventDefault();
+      // 右键拖拽（平移）后不弹菜单
+      if (rightDown && Math.hypot(event.clientX - rightDown.x, event.clientY - rightDown.y) > 6) {
+        rightDown = null;
+        return;
+      }
+      rightDown = null;
+      const mesh = pick(event.clientX, event.clientY);
+      if (!mesh) {
+        setContextMenu(null);
+        return;
+      }
+      const rect = canvas.getBoundingClientRect();
+      const pos = clampMenuPos(event.clientX - rect.left, event.clientY - rect.top, 216, 236, rect.width, rect.height);
+      setContextMenu({ x: pos.left, y: pos.top, partName: String(mesh.userData.partName) });
+    };
+
+    canvas.addEventListener("pointerdown", onPointerDown);
+    canvas.addEventListener("pointermove", onPointerMove);
+    canvas.addEventListener("pointerleave", onPointerLeave);
+    canvas.addEventListener("contextmenu", onContextMenu);
+    return () => {
+      canvas.removeEventListener("pointerdown", onPointerDown);
+      canvas.removeEventListener("pointermove", onPointerMove);
+      canvas.removeEventListener("pointerleave", onPointerLeave);
+      canvas.removeEventListener("contextmenu", onContextMenu);
+      setHover(null);
+    };
+  }, [status, modelsKey, selected]);
+
+  // 菜单外点击 / Escape 关闭
+  useEffect(() => {
+    if (!contextMenu) {
+      return;
+    }
+    const onPointerDown = (event: PointerEvent) => {
+      const target = event.target as HTMLElement | null;
+      if (target?.closest?.(".part-context-menu")) {
+        return;
+      }
+      setContextMenu(null);
+    };
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setContextMenu(null);
+      }
+    };
+    window.addEventListener("pointerdown", onPointerDown, true);
+    window.addEventListener("keydown", onKey);
+    return () => {
+      window.removeEventListener("pointerdown", onPointerDown, true);
+      window.removeEventListener("keydown", onKey);
+    };
+  }, [contextMenu]);
 
   const setPreset = (preset: ViewPreset) => {
     const controls = controlsRef.current;
@@ -699,6 +862,73 @@ export default function Viewport({ objUrl, stlUrl, breadcrumb, statusLabel, mode
         <span className="axis-z">Z</span>
       </div>
       <div className="viewport-status">{statusLabel || statusText}</div>
+
+      {contextMenu && (
+        <div className="part-context-menu" style={{ left: contextMenu.x, top: contextMenu.y }} data-part={contextMenu.partName}>
+          <div className="pcm-title" title={contextMenu.partName}>
+            {contextMenu.partName}
+          </div>
+          <div className="pcm-group">{t("viewport.ctx.transparency")}</div>
+          {TRANSPARENCY_LEVELS.map((level) => {
+            const active = (partVisuals[contextMenu.partName]?.opacity || "opaque") === level;
+            return (
+              <button
+                key={level}
+                type="button"
+                className={active ? "active" : ""}
+                onClick={() => {
+                  setPartVisuals((previous) => ({
+                    ...previous,
+                    [contextMenu.partName]: { opacity: level, hidden: false },
+                  }));
+                  setContextMenu(null);
+                }}
+              >
+                <span className="pcm-check" aria-hidden>{active ? "✓" : ""}</span>
+                {t(`viewport.ctx.${level}`)}
+              </button>
+            );
+          })}
+          <div className="pcm-sep" />
+          <button
+            type="button"
+            onClick={() => {
+              setPartVisuals((previous) => ({
+                ...previous,
+                [contextMenu.partName]: { opacity: previous[contextMenu.partName]?.opacity || "opaque", hidden: true },
+              }));
+              setContextMenu(null);
+            }}
+          >
+            <span className="pcm-check" aria-hidden />
+            {t("viewport.ctx.hide")}
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              setPartVisuals({});
+              setContextMenu(null);
+            }}
+          >
+            <span className="pcm-check" aria-hidden />
+            {t("viewport.ctx.showAll")}
+          </button>
+        </div>
+      )}
+
+      {Object.keys(partVisuals).length > 0 && (
+        <div className="viewport-visual-chip">
+          <span>
+            {t("viewport.ctx.dirty", {
+              hidden: Object.values(partVisuals).filter((item) => item.hidden).length,
+              faded: Object.values(partVisuals).filter((item) => item.opacity !== "opaque" && !item.hidden).length,
+            })}
+          </span>
+          <button type="button" onClick={() => setPartVisuals({})}>
+            {t("viewport.ctx.restore")}
+          </button>
+        </div>
+      )}
 
       {showOverlay && (
         <div className="viewport-empty">

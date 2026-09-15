@@ -722,6 +722,98 @@
   accent-color: var(--jade);
 }
 
+/* ===== v0.21 SW 式零件右键菜单 + 视觉状态芯片 ===== */
+.part-context-menu {
+  position: absolute;
+  z-index: 12;
+  min-width: 190px;
+  padding: 5px;
+  border: 1px solid var(--hairline);
+  border-radius: 9px;
+  background: rgba(12, 26, 47, 0.97);
+  box-shadow: var(--shadow);
+  font-size: 12px;
+  backdrop-filter: blur(8px);
+}
+.part-context-menu .pcm-title {
+  padding: 6px 9px 7px;
+  color: var(--jade);
+  font-family: ui-monospace, "Cascadia Mono", Consolas, monospace;
+  font-size: 11.5px;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  border-bottom: 1px solid var(--line);
+  margin-bottom: 4px;
+}
+.part-context-menu .pcm-group {
+  padding: 4px 9px 2px;
+  color: var(--ink-soft);
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.part-context-menu button {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  width: 100%;
+  padding: 6px 9px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--ink);
+  font-size: 12px;
+  text-align: left;
+  cursor: pointer;
+}
+.part-context-menu button:hover {
+  background: rgba(56, 195, 232, 0.12);
+}
+.part-context-menu button.active {
+  color: var(--jade);
+}
+.part-context-menu .pcm-check {
+  width: 12px;
+  flex: none;
+  color: var(--jade);
+}
+.part-context-menu .pcm-sep {
+  height: 1px;
+  margin: 4px 6px;
+  background: var(--line);
+}
+.viewport-visual-chip {
+  position: absolute;
+  z-index: 5;
+  left: 50%;
+  bottom: 46px;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 5px 8px 5px 12px;
+  border: 1px solid var(--hairline);
+  border-radius: 999px;
+  background: rgba(10, 22, 42, 0.9);
+  color: var(--ink-soft);
+  font-size: 11px;
+  backdrop-filter: blur(6px);
+}
+.viewport-visual-chip button {
+  padding: 3px 10px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: rgba(56, 195, 232, 0.14);
+  color: var(--jade);
+  font-size: 11px;
+  cursor: pointer;
+}
+.viewport-visual-chip button:hover {
+  background: rgba(56, 195, 232, 0.24);
+}
+
 /* ===== Startup screen ===== */
 
 .startup-screen {

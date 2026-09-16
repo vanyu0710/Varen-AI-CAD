@@ -1,0 +1,40 @@
+{
+  "task_id": "tube-groove",
+  "name": "空心管 + 内环形槽",
+  "group": "smoke",
+  "prompt": "一根空心管：外径 Ø40、内径 Ø30、长 200， 距一端 40mm 处开一圈宽 6mm、深 2mm 的内环槽。",
+  "app_version": "0.21.0-beta",
+  "started_at": "2026-09-16T10:24:32.885594+00:00",
+  "model": {
+    "name": "Qwen3.8-Flash",
+    "base_url": "https://api.scnet.cn/api/llm/v1",
+    "protocol": "openai"
+  },
+  "duration_s": 230.4,
+  "steps": 15,
+  "status": "SUCCESS",
+  "ok": true,
+  "error": null,
+  "error_kind": null,
+  "parts_count": 0,
+  "parts": [],
+  "assembly": null,
+  "design_calculations": 0,
+  "step_files": [
+    "model.step"
+  ],
+  "artifacts": {
+    "stl": "G:\\lfy design\\ai cad\\varen cad\\aicad\\work\\new_arch_runs\\bench-tube-groove-1789554272\\model.stl",
+    "snapshot_s9": "G:\\lfy design\\ai cad\\varen cad\\aicad\\work\\new_arch_runs\\bench-tube-groove-1789554272\\snapshot_s9.png",
+    "snapshot_s15": "G:\\lfy design\\ai cad\\varen cad\\aicad\\work\\new_arch_runs\\bench-tube-groove-1789554272\\snapshot_s15.png",
+    "step": "G:\\lfy design\\ai cad\\varen cad\\aicad\\work\\new_arch_runs\\bench-tube-groove-1789554272\\model.step",
+    "execution_report": "G:\\lfy design\\ai cad\\varen cad\\aicad\\work\\new_arch_runs\\bench-tube-groove-1789554272\\execution_report.json"
+  },
+  "events_captured": 394,
+  "run_dir": "work\\new_arch_runs\\bench-tube-groove-1789554272",
+  "verdict": "PASS",
+  "reasons": [
+    "OK"
+  ],
+  "final_text_excerpt": "**状态：SUCCESS** — 单零件空心管已建好、实测通过并导出。单位 mm。\n\n**参数表**\n| 项 | 值 | 来源 |\n|---|---|---|\n| 外径 OD | Ø40 | 用户指定 |\n| 内径 ID | Ø30 | 用户指定 |\n| 管长 L | 200 | 用户指定 |\n| 环槽轴向宽 | 6 | 用户指定 |\n| 环槽径向深 | 2（槽底 Ø34） | 用户指定，\"深\"按径向理解 |\n| 槽定位 | 近端边距 Z=0 端面 40 → 槽占 Z=40~46 | 你选择的基准 |\n\n**建模方式**：XY 面同心双圆（R20/R15）环形截面拉伸 200 得管坯；在 Z=40 偏置平面上画环形草图（R17/R14.5，内圈伸进空腔避免与内孔面共面）沿 +Z 切 6mm 得内环槽。全部尺寸由脚本顶部参数表生成，可参数重放。\n\n**实测证据（非渲染判断）**\n- validate_geometry standard：valid，solid_count = 1，volume = 108749.37 mm³\n- 体积手算校验：π(20²−15²)·200 = 109955.74；槽去除 π(17²−15²)·6 = 1206.37 → 108749.37，与实测一致到小数位\n- 面拓扑 select：外圆 F00 R20 面积 25132.74（=2π·20·200）"
+}

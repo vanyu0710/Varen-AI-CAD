@@ -1,0 +1,55 @@
+name: 🤝 设计伙伴申请（封闭 Beta）
+description: 30 分钟填好，入选后你会收到 Windows Beta 安装包与限额试用端点
+labels: ["design-partner"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        我们正在招募 **30 名设计伙伴**（详见 [docs/beta.md](docs/beta.md)）。
+        优先录取：能带来真实机械任务、愿意参加 30 分钟复盘的工程师。
+  - type: dropdown
+    id: role
+    attributes:
+      label: 你的身份
+      options:
+        - 独立 / 接单机械工程师
+        - 企业机械/结构/机构设计工程师
+        - 机器人 / 自动化 / 硬件创业团队
+        - 高校教师 / 竞赛队
+        - CAD / 开源 / AI 工程师
+        - 其他
+    validations:
+      required: true
+  - type: textarea
+    id: task
+    attributes:
+      label: 一个你近期真实的建模任务（可脱敏）
+      description: 越具体越好：零件类型、关键尺寸、现在用什么软件做、大概花多久。这是筛选的第一依据。
+      placeholder: 例：某输送设备张紧架，两块侧板 + 轴 + 调节螺杆，SolidWorks 里画一次约 2 小时…
+    validations:
+      required: true
+  - type: input
+    id: current-tool
+    attributes:
+      label: 目前主要用的 CAD 工具
+      placeholder: SolidWorks / Fusion / NX / 中望3D / FreeCAD / …
+    validations:
+      required: true
+  - type: input
+    id: contact
+    attributes:
+      label: 联系方式（GitHub handle + 微信/邮箱任一）
+      description: 仅用于发放安装包与安排复盘，不发广告
+    validations:
+      required: true
+  - type: checkboxes
+    id: commit
+    attributes:
+      label: 承诺
+      options:
+        - label: 我接受：任务记录（脱敏后）可能被收录进公开 benchmark 与失败周报
+          required: true
+        - label: 我能安排一次 30–60 分钟的上手 + 一次 30 分钟复盘（两周内）
+          required: true
+        - label: 我理解这是 beta：会有失败与粗糙边缘，产品明确不做"直接投产"承诺
+          required: true

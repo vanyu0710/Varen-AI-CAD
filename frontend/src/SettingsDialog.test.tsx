@@ -51,6 +51,27 @@ describe("SettingsDialog", () => {
     expect(screen.getByText("建模规划模型")).toBeInTheDocument();
   });
 
+  it("exposes support actions on the general tab", () => {
+    render(
+      <SettingsDialog
+        open
+        settings={DEFAULT_SETTINGS}
+        dirty={false}
+        saving={false}
+        notice=""
+        startupMode="always"
+        onClose={vi.fn()}
+        onChange={vi.fn()}
+        onApply={vi.fn()}
+        onStartupModeChange={vi.fn()}
+      />,
+    );
+    const diagnostics = screen.getByRole("link", { name: "导出诊断包" });
+    expect(diagnostics).toHaveAttribute("href", "/api/diagnostics");
+    expect(screen.getByRole("link", { name: "报告 Bug" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /任务失败/ })).toBeInTheDocument();
+  });
+
   it("switches the interface language", async () => {
     const user = userEvent.setup();
     render(

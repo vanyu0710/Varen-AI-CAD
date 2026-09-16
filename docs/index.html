@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>Varen CAD — 把草图变成可制造的三维模型</title>
+<title>Varen CAD — 会交付证据的机械设计 Agent</title>
 <meta name="description" content="Varen CAD 是面向机械工程师的 AI 建模 IDE：AI agent 像工程师一样逐步自主建模，你随时看进度、改参数、确认关键决策，交付参数化 BRep 零件与多实体装配 STEP。" />
 
 <!-- 字体: Instrument Serif (display) + Inter (body) + JetBrains Mono (code) -->
@@ -371,23 +371,24 @@
   <div class="hero-content">
     <div class="status-chip">
       <span class="pulse"></span>
-      <span class="v">v0.14</span> &nbsp;·&nbsp; 394 tests pass &nbsp;·&nbsp; MechKernel 内核驱动
+      <span class="v">v0.21.0-beta</span> &nbsp;·&nbsp; 433 tests pass &nbsp;·&nbsp; MechKernel 内核驱动 &nbsp;·&nbsp; 封闭 Beta 进行中
     </div>
 
     <h1>
       <em>把一句话</em>，<br>
-      变成<span class="accent">可制造的三维模型</span>
+      变成<span class="accent">可审计的装配交付</span>
     </h1>
 
     <p class="subtitle">
-      Varen CAD 是面向机械工程师的 AI 建模 IDE。AI agent 像工程师一样<em class="serif" style="color: var(--ocean);">逐步自主建模</em>——
-      你随时看进度、改参数、确认关键决策，交付参数化 BRep 零件与多实体装配 STEP。
+      Varen CAD 是面向机械工程师的本地 AI 建模 Agent。它像工程师一样<em class="serif" style="color: var(--ocean);">调研、提问、计划、逐件建模</em>——
+      每一步可回放，每个关键结果由程序检查，碰撞与契约不过关就不交付。输出可继续编辑的参数化 BRep 与装配 STEP。
     </p>
 
     <span class="eyebrow">对话式 harness &nbsp;·&nbsp; 真实 OCC 几何 &nbsp;·&nbsp; 可重放特征历史</span>
 
     <div class="hero-cta">
-      <a href="https://github.com/vanyu0710/aicad" class="btn btn-primary">★ Star on GitHub</a>
+      <a href="#beta" class="btn btn-primary">申请成为设计伙伴 →</a>
+      <a href="https://github.com/vanyu0710/aicad" class="btn btn-ghost">★ Star on GitHub</a>
       <a href="#demo" class="btn btn-ghost">看实测结果 →</a>
     </div>
 
@@ -404,7 +405,7 @@
       <div class="mini-stat"><span class="v">14</span><span class="l">零件一次跑通</span></div>
       <div class="mini-stat"><span class="v">91</span><span class="l">对干涉全查</span></div>
       <div class="mini-stat"><span class="v">0</span><span class="l">未豁免干涉</span></div>
-      <div class="mini-stat"><span class="v">394</span><span class="l">后端测试</span></div>
+      <div class="mini-stat"><span class="v">433</span><span class="l">自动化测试</span></div>
     </div>
   </div>
 
@@ -687,6 +688,47 @@ pip install -r requirements.txt
 </section>
 
 
+<!-- ===== Beta 设计伙伴招募 ===== -->
+<section class="quick fadein" id="beta" style="background: linear-gradient(180deg, rgba(95,208,160,0.06), transparent);">
+  <div class="section-inner">
+    <span class="eyebrow-section">Design Partner Program</span>
+    <h2 class="section-title">招募 30 名<em>设计伙伴</em></h2>
+    <p class="section-subtitle">v0.21.0-beta 封闭测试。我们要的不是流量，是能判断"这个尺寸合不合理、这个 STEP 能不能继续用"的人。名额满或公开 Beta 就绪即关闭申请。</p>
+    <div class="quick-grid">
+      <ol class="quick-steps">
+        <li>
+          <h4>谁适合</h4>
+          <p>独立/接单机械工程师；机器人、自动化、硬件团队里做结构设计的人；经常重复画支架、法兰、轴系、齿轮传动、机架的工程师。</p>
+        </li>
+        <li>
+          <h4>你会得到</h4>
+          <p>Windows Beta 安装包（校验值 + 安装指引）、限额试用模型端点、与开发者直接沟通的通道、被致谢于发布说明。</p>
+        </li>
+        <li>
+          <h4>我们请你做</h4>
+          <p>用自己的真实任务（可脱敏）完成一次 30–60 分钟旁观式上手，参加一次 30 分钟复盘。失败样本和成功一样有价值——它们会变成公开 benchmark。</p>
+        </li>
+      </ol>
+      <div class="code-block">
+        <div class="head"><i></i><i></i><i></i></div>
+<pre><span class="c"># 申请方式（GitHub Issue，2 分钟）</span>
+https://github.com/vanyu0710/aicad
+  /issues/new?template=beta_application.yml
+
+<span class="c"># 你需要准备</span>
+- 一个真实的机械建模任务（图纸描述即可）
+- Windows 10/11，8 GB 内存以上
+- 30 分钟不被打扰的时间
+
+<span class="c"># 反馈与已知问题</span>
+Known Issues → /blob/main/KNOWN_ISSUES.md
+测试与运行记录 → /blob/main/benchmark/
+Beta 计划细则 → /blob/main/docs/beta.md</pre>
+      </div>
+    </div>
+  </div>
+</section>
+
 <!-- ===== Quote ===== -->
 <section class="quote fadein">
   <div class="section-inner">
@@ -702,8 +744,8 @@ pip install -r requirements.txt
 <!-- ===== CTA ===== -->
 <section class="cta-end fadein">
   <div class="section-inner">
-    <h2>把草图，变成<em>可制造</em>的模型</h2>
-    <p>CAD 领域的 Codex —— 让 AI 拥有工程师的双手与纪律。</p>
+    <h2>会交付证据的<em>机械设计 Agent</em></h2>
+    <p>本地优先 · 硬门控验证 · 完整审计链 —— 让 AI 拥有工程师的双手与纪律。</p>
     <div class="hero-cta">
       <a href="https://github.com/vanyu0710/aicad" class="btn btn-primary">★ Star on GitHub</a>
       <a href="https://github.com/vanyu0710/aicad/blob/main/README.md" class="btn btn-ghost">阅读文档</a>
@@ -727,7 +769,7 @@ pip install -r requirements.txt
       </h5>
       <p>面向机械工程师的 AI 建模 IDE。由 <a href="https://github.com/vanyu0710/mechcad-kernel" target="_blank">MechKernel</a> 参数化内核驱动。</p>
       <div class="badges">
-        <span class="badge"><span class="dot"></span> 394 tests passing</span>
+        <span class="badge"><span class="dot"></span> 433 tests passing</span>
         <span class="badge">Python 3.12</span>
         <span class="badge">React + Three.js</span>
         <span class="badge">OCC 7.9.3</span>
@@ -739,6 +781,7 @@ pip install -r requirements.txt
       <a href="#caps">能力</a>
       <a href="#demo">实测</a>
       <a href="#quick">快速开始</a>
+      <a href="#beta">设计伙伴招募</a>
     </div>
     <div>
       <h5>Resources</h5>

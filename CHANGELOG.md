@@ -1,3 +1,30 @@
+## v0.21.0-beta - 发布基础设施 + 视口透明度交互（本次公开前的 P0 批次）
+
+- **版本单一来源**：仓库根 `VERSION`（0.21.0-beta）+ `backend/version.py`；FastAPI `/api/health` 输出真实版本；打包脚本自动读 VERSION 并生成 `.sha256`；spec 随包分发 VERSION/LICENSE。终结 0.6.0/0.1.0/0.14 三处漂移。
+- **许可证落地**：主仓补 `LICENSE`（AGPL-3.0-or-later，与内核一致），采用「社区 AGPL + 商业双许可」（决策备忘录 `docs/license-strategy.md`）；`CONTRIBUTING.md` 确立 DCO + 再许可授权。
+- **定位表述修正**：对外主张从"可制造"改为"可审计的机械设计 Agent / 可验证、可编辑的参数化装配原型"；README 与落地页同步（含禁用词纪律）。
+- **发布基础设施**：GitHub Issue 模板（bug / 任务失败报告 / 设计伙伴申请 / 功能建议）+ PR 模板；`KNOWN_ISSUES.md`；封闭 Beta 计划 `docs/beta.md`；发布检查清单 `docs/release/release-checklist.md`；落地页新增设计伙伴招募区块。
+- **可观测性**：应用内一键诊断导出（设置中心 → 支持；日志尾部 + 掩码配置 + 版本 + 环境，不含 API key）；反馈入口直达 Issue 模板。
+- **可复现证据**：公开 benchmark 骨架——`benchmark/tasks.yaml`（10 个分层任务）+ `scripts/run_benchmark.py`（记录 prompt/模型/版本/耗时/步数/结果/失败类型，产出可发布运行记录）。
+- **视口交互（原 v0.21 提交）**：SolidWorks 风格右键零件透明度设置。
+
+## v0.20.0-alpha - 模型配置控制台（harness 级）
+
+- 设置中心模型配置升级：多角色（planner/vision）端点、掩码回显、连接测试与模型列表（`/api/model/test`、`/api/model/list`）。
+
+## v0.19.0-alpha - 零件专业渲染
+
+- 视口改为专业 CAD 渲染观感（零件材质着色、边缘样式对齐工程审图习惯）。
+
+## v0.18.0-alpha - 壳体设计工具 + 强制审计门
+
+- `housing_design` 工具：按内部件包络反推箱体腔体/轴颈/壁厚；**逐项程序审计**（旋转件间隙、轴承座同轴、法兰螺栓边距、可拆性、单实体、卧式布局一致），审计 FAIL 阻断交付。
+- worker 超时修复：超时不再无限挂起（`43d07cc`）。
+
+## v0.17.0-alpha - 5 挡手动变速器链路
+
+- 变速器提示词指引 + 5 挡变速器 runner（`scripts/real_llm_transmission.py`）；26 件总成（含壳体）/ 325 对干涉全查 / 硬碰撞 0；真渐开线斜齿 β=15°；材质着色可视化。
+
 ## v0.15.1-alpha - 装配交付报告 404 修复 + 补齐 kernelNarrative 模块
 
 - **零件库白名单修复（`backend/storage.py`）**：`_LIB_KIND` 漏了 `assembly_NNN_report.json` / `assembly_NNN_render.png` 两种 `export_assembly` 实际生成的文件名——装配面板"交付报告"链接一直 404（预览图字段同样不可达）。现放行 `_report`/`_render` 后缀与 `.png`；穿越防护不变（`assembly_001_x.json`、`.exe`、错误位数仍 404）。回归测试 `test_report_and_render_filenames_are_served`（aicad 413/413）。

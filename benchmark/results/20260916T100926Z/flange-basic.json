@@ -1,0 +1,42 @@
+{
+  "task_id": "flange-basic",
+  "name": "法兰（op 路径冒烟）",
+  "group": "smoke",
+  "prompt": "做一块 120×120×12 的方法兰，中心 Ø30 通孔， 6 个 Ø8 螺栓孔均布在 Ø90 分度圆上。",
+  "app_version": "0.21.0-beta",
+  "started_at": "2026-09-16T10:09:32.523199+00:00",
+  "model": {
+    "name": "Qwen3.8-Flash",
+    "base_url": "https://api.scnet.cn/api/llm/v1",
+    "protocol": "openai"
+  },
+  "duration_s": 187.0,
+  "steps": 17,
+  "status": "SUCCESS",
+  "ok": true,
+  "error": null,
+  "error_kind": null,
+  "parts_count": 0,
+  "parts": [],
+  "assembly": null,
+  "design_calculations": 0,
+  "step_files": [
+    "model.step"
+  ],
+  "artifacts": {
+    "stl": "G:\\lfy design\\ai cad\\varen cad\\aicad\\work\\new_arch_runs\\bench-flange-basic-1789553372\\model.stl",
+    "snapshot_s7": "G:\\lfy design\\ai cad\\varen cad\\aicad\\work\\new_arch_runs\\bench-flange-basic-1789553372\\snapshot_s7.png",
+    "snapshot_s8": "G:\\lfy design\\ai cad\\varen cad\\aicad\\work\\new_arch_runs\\bench-flange-basic-1789553372\\snapshot_s8.png",
+    "snapshot_s12": "G:\\lfy design\\ai cad\\varen cad\\aicad\\work\\new_arch_runs\\bench-flange-basic-1789553372\\snapshot_s12.png",
+    "snapshot_s17": "G:\\lfy design\\ai cad\\varen cad\\aicad\\work\\new_arch_runs\\bench-flange-basic-1789553372\\snapshot_s17.png",
+    "step": "G:\\lfy design\\ai cad\\varen cad\\aicad\\work\\new_arch_runs\\bench-flange-basic-1789553372\\model.step",
+    "execution_report": "G:\\lfy design\\ai cad\\varen cad\\aicad\\work\\new_arch_runs\\bench-flange-basic-1789553372\\execution_report.json"
+  },
+  "events_captured": 448,
+  "run_dir": "work\\new_arch_runs\\bench-flange-basic-1789553372",
+  "verdict": "PASS",
+  "reasons": [
+    "OK"
+  ],
+  "final_text_excerpt": "**状态：SUCCESS**（单件简单任务，未走计划模式）。单位 mm。\n\n**参数表**（全部来自用户指定，无推断值）\n| 参数 | 值 | 来源 |\n|---|---|---|\n| 底板边长 | 120 × 120 | 用户 |\n| 厚度 t | 12 | 用户 |\n| 中心孔 Ø | 30，通孔 | 用户 |\n| 螺栓孔 | Ø8 × 6，通孔 | 用户 |\n| 分度圆 Ø | 90（孔心半径 45） | 用户 |\n\n**建模路径**：XY 基准面 → 120×120 方坯草图（中心置原点，使孔系与外形同轴）→ extrude 12 → hole Ø30 通孔 → 单孔草图（45,0）+ circular_pattern 6×/360°/Z 轴切除。螺栓孔由阵列生成，不是逐个手摆坐标，改 count 或 BCD 可参数重放。\n\n**实测几何统计**\n- solid_count = 1，volume = 160698.585 mm³，bbox = [−60,−60,0]→[60,60,12]（即 120×120×12），表面积 35483.63 mm²\n- 体积守恒校核：172800（方坯）− 8482.30（Ø30×12）− 3619.11（6×Ø8×12）= 160698.59 ✓ 与实测吻合\n- 孔语义查询（query what=holes）：7 个孔，全部 `throu"
+}

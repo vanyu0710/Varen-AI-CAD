@@ -86,6 +86,7 @@ export default function SettingsDialog({
 
           <div className="settings-tab-content">
             {tab === "general" ? (
+              <>
               <section className="settings-section">
                 <div className="settings-section-title">
                   <h3>{t("settings.general")}</h3>
@@ -132,6 +133,50 @@ export default function SettingsDialog({
                   </label>
                 )}
               </section>
+              <section className="settings-section">
+                <div className="settings-section-title">
+                  <h3>{t("settings.support")}</h3>
+                  <span>{t("settings.support.hint")}</span>
+                </div>
+                <div className="settings-support-actions">
+                  <a className="settings-support-button" href="/api/diagnostics" download>
+                    {t("settings.support.diagnostics")}
+                  </a>
+                  <a
+                    className="settings-support-link"
+                    href="https://github.com/vanyu0710/aicad/issues/new?template=bug_report.yml"
+                    target="_blank"
+                    rel="noreferrer"
+                  >
+                    {t("settings.support.bug")}
+                  </a>
+                  <a
+                    className="settings-support-link"
+                    href="https://github.com/vanyu0710/aicad/issues/new?template=task_failure.yml"
+                    target="_blank"
+                    rel="noreferrer"
+                  >
+                    {t("settings.support.failure")}
+                  </a>
+                  <a
+                    className="settings-support-link"
+                    href="https://github.com/vanyu0710/aicad/blob/main/KNOWN_ISSUES.md"
+                    target="_blank"
+                    rel="noreferrer"
+                  >
+                    {t("settings.support.issues")}
+                  </a>
+                  <a
+                    className="settings-support-link"
+                    href="https://github.com/vanyu0710/aicad/blob/main/docs/beta.md"
+                    target="_blank"
+                    rel="noreferrer"
+                  >
+                    {t("settings.support.docs")}
+                  </a>
+                </div>
+              </section>
+              </>
             ) : (
               <section className="settings-section settings-model-section">
                 <div className="settings-section-title">

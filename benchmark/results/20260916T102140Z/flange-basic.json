@@ -1,0 +1,42 @@
+{
+  "task_id": "flange-basic",
+  "name": "法兰（op 路径冒烟）",
+  "group": "smoke",
+  "prompt": "做一块 120×120×12 的方法兰，中心 Ø30 通孔， 6 个 Ø8 螺栓孔均布在 Ø90 分度圆上。",
+  "app_version": "0.21.0-beta",
+  "started_at": "2026-09-16T10:21:48.330514+00:00",
+  "model": {
+    "name": "Qwen3.8-Flash",
+    "base_url": "https://api.scnet.cn/api/llm/v1",
+    "protocol": "openai"
+  },
+  "duration_s": 163.9,
+  "steps": 15,
+  "status": "SUCCESS",
+  "ok": true,
+  "error": null,
+  "error_kind": null,
+  "parts_count": 0,
+  "parts": [],
+  "assembly": null,
+  "design_calculations": 0,
+  "step_files": [
+    "model.step"
+  ],
+  "artifacts": {
+    "stl": "G:\\lfy design\\ai cad\\varen cad\\aicad\\work\\new_arch_runs\\bench-flange-basic-1789554108\\model.stl",
+    "snapshot_s5": "G:\\lfy design\\ai cad\\varen cad\\aicad\\work\\new_arch_runs\\bench-flange-basic-1789554108\\snapshot_s5.png",
+    "snapshot_s6": "G:\\lfy design\\ai cad\\varen cad\\aicad\\work\\new_arch_runs\\bench-flange-basic-1789554108\\snapshot_s6.png",
+    "snapshot_s10": "G:\\lfy design\\ai cad\\varen cad\\aicad\\work\\new_arch_runs\\bench-flange-basic-1789554108\\snapshot_s10.png",
+    "snapshot_s15": "G:\\lfy design\\ai cad\\varen cad\\aicad\\work\\new_arch_runs\\bench-flange-basic-1789554108\\snapshot_s15.png",
+    "step": "G:\\lfy design\\ai cad\\varen cad\\aicad\\work\\new_arch_runs\\bench-flange-basic-1789554108\\model.step",
+    "execution_report": "G:\\lfy design\\ai cad\\varen cad\\aicad\\work\\new_arch_runs\\bench-flange-basic-1789554108\\execution_report.json"
+  },
+  "events_captured": 364,
+  "run_dir": "work\\new_arch_runs\\bench-flange-basic-1789554108",
+  "verdict": "PASS",
+  "reasons": [
+    "OK"
+  ],
+  "final_text_excerpt": "**状态：SUCCESS** — 单件方法兰已建模、验证并导出。单位 mm。\n\n**参数表**（全部来自用户给定，无推断值）\n| 参数 | 值 | 来源 |\n|---|---|---|\n| 外形 | 120 × 120 | 用户 |\n| 厚度 | 12 | 用户 |\n| 中心孔 | Ø30 通孔 | 用户 |\n| 螺栓孔 | Ø8 × 6，均布 | 用户 |\n| 分度圆 | Ø90（R45） | 用户 |\n| 起始孔相位 | 0°（首个孔在 +X 轴上） | 假设：用户未指定相位，仅影响绕 Z 旋转，不影响孔系关系 |\n\n**实测几何统计**\n- solid_count = 1，volume = 160 698.585 mm³，bbox = [-60,-60,0] → [60,60,12]，surface_area = 35 483.63 mm²\n- 体积自洽校核：172 800（120×120×12）− 8 482.30（Ø30×12）− 3 619.11（6×Ø8×12）= 160 698.59 ✓\n\n**孔语义实测（query what=holes，共 7 个孔，全部 through=true、depth=12）**\n- 1 × Ø30 @ (0, 0)\n- 6 × Ø8 @ (45, 0)、(22.5, 38.97)、(−22.5, 38.97)、(−45, 0)、(−22"
+}

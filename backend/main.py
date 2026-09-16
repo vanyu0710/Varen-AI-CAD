@@ -6,13 +6,16 @@ import asyncio
 import io
 import json
 import os
+import platform
 import threading
+import zipfile
+from datetime import datetime, timezone
 from pathlib import Path
 
 from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, Response
 from PIL import Image
 
 from backend.ai import (
@@ -77,11 +80,12 @@ from backend.storage import (
 )
 from backend.validation import apply_validation_result, validate_feature_plan
 from backend.static_assets import mount_frontend
+from backend.version import APP_VERSION
 
 
 load_dotenv()
 
-app = FastAPI(title="MechCAD IDE API", version="0.6.0")
+app = FastAPI(title="Varen CAD API", version=APP_VERSION)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["http://localhost:5173", "http://127.0.0.1:5173", "http://localhost:8001", "http://127.0.0.1:8001"],
@@ -147,7 +151,97 @@ def _emit_from_thread_factory(project_id: str, loop: asyncio.AbstractEventLoop):
 
 @app.get("/api/health")
 def health() -> dict[str, str]:
-    return {"status": "ok", "service": "mechcad-ide-api"}
+    return {"status": "ok", "service": "varen-cad-api", "version": APP_VERSION}
+
+
+DIAG_LOG_TAIL_BYTES = 400_000
+DIAG_LOG_MAX_FILES = 8
+# 诊断包只报告这些环境变量的存在性与掩码值；键（KEY）永不写入。
+DIAG_ENV_NAMES = (
+    "MECHCAD_PLANNER_MODEL", "MECHCAD_PLANNER_BASE_URL", "MECHCAD_PLANNER_API_KEY",
+    "MECHCAD_PLANNER_MAX_TOKENS",
+    "MECHCAD_VISION_MODEL", "MECHCAD_VISION_BASE_URL", "MECHCAD_VISION_API_KEY",
+    "MECHCAD_KERNEL_REPO", "MECHCAD_KERNEL_PYTHON", "MECHCAD_KERNEL_TIMEOUT",
+    "MECHCAD_LOG_DIR", "MECHCAD_PORT", "MECHCAD_PROMPTS_FILE",
+    "MECHCAD_PROMPT_OPS", "MECHCAD_AGENT_APPROVAL_TIMEOUT",
+)
+
+
+def _diag_env_report() -> dict[str, str | None]:
+    out: dict[str, str | None] = {}
+    for name in DIAG_ENV_NAMES:
+        raw = os.getenv(name, "")
+        if not raw:
+            out[name] = None
+        elif "API_KEY" in name:
+            out[name] = _mask_key(raw)
+        else:
+            out[name] = raw
+    return out
+
+
+def _diag_log_files() -> list[Path]:
+    roots: list[Path] = []
+    env_dir = os.getenv("MECHCAD_LOG_DIR")
+    if env_dir:
+        roots.append(Path(env_dir))
+    roots.append(Path("work"))  # varen_launcher 写 work/varen-cad.log
+    files: list[Path] = []
+    seen: set[Path] = set()
+    for root in roots:
+        if not root.is_dir():
+            continue
+        for path in sorted(root.glob("*.log")):
+            resolved = path.resolve()
+            if resolved in seen or not path.is_file():
+                continue
+            seen.add(resolved)
+            files.append(path)
+    files.sort(key=lambda f: f.stat().st_mtime, reverse=True)
+    return files[:DIAG_LOG_MAX_FILES]
+
+
+def _diag_tail(path: Path) -> str:
+    try:
+        data = path.read_bytes()
+    except OSError as exc:
+        return f"<unreadable: {exc}>"
+    return data[-DIAG_LOG_TAIL_BYTES:].decode("utf-8", errors="replace")
+
+
+@app.get("/api/diagnostics")
+def diagnostics():
+    """一键诊断包（本地读取，非遥测）：版本/系统/掩码环境配置/项目清单/日志尾部。
+
+    API key 一律掩码，模型与项目文件内容不进包。是否上传到 Issue 完全由用户决定，
+    隐私边界见 KNOWN_ISSUES.md「数据与隐私」。
+    """
+    kernel_repo = os.getenv("MECHCAD_KERNEL_REPO", "")
+    report = {
+        "generated_at": datetime.now(timezone.utc).isoformat(),
+        "app": {"name": "Varen CAD", "version": APP_VERSION},
+        "system": {
+            "python": platform.python_version(),
+            "platform": platform.platform(),
+            "machine": platform.machine(),
+            "cwd": str(Path.cwd()),
+        },
+        "kernel": {"env_path": kernel_repo or None, "exists": bool(kernel_repo) and Path(kernel_repo).is_dir()},
+        "env": _diag_env_report(),
+        "projects": [
+            _public_project(p).model_dump(mode="json") for p in store.list_projects()
+        ],
+    }
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
+        zf.writestr("report.json", json.dumps(report, ensure_ascii=False, indent=2))
+        for path in _diag_log_files():
+            zf.writestr(f"logs/{path.name}", _diag_tail(path))
+    return Response(
+        content=buf.getvalue(),
+        media_type="application/zip",
+        headers={"Content-Disposition": f'attachment; filename="varen-cad-diagnostics-{APP_VERSION}.zip"'},
+    )
 
 
 @app.get("/api/capabilities")

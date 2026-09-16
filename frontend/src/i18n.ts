@@ -161,6 +161,14 @@ export const translations: Record<Lang, Record<string, string>> = {
     "settings.tab.general": "常规",
     "settings.tab.models": "模型",
 
+    "settings.support": "支持与反馈",
+    "settings.support.hint": "诊断包仅在本地生成、不含 API key；是否上传由你决定。",
+    "settings.support.diagnostics": "导出诊断包",
+    "settings.support.bug": "报告 Bug",
+    "settings.support.failure": "提交任务失败（进公开 benchmark）",
+    "settings.support.issues": "已知问题",
+    "settings.support.docs": "Beta 计划与文档",
+
     "model.vision": "视觉模型",
     "model.planner": "规划模型",
     "model.vision.ready": "已配置",
@@ -656,6 +664,14 @@ export const translations: Record<Lang, Record<string, string>> = {
     "settings.tabs": "Settings sections",
     "settings.tab.general": "General",
     "settings.tab.models": "Models",
+
+    "settings.support": "Support & feedback",
+    "settings.support.hint": "The diagnostics bundle is generated locally and never contains API keys; uploading is entirely your choice.",
+    "settings.support.diagnostics": "Export diagnostics bundle",
+    "settings.support.bug": "Report a bug",
+    "settings.support.failure": "Report a failed task (joins the public benchmark)",
+    "settings.support.issues": "Known issues",
+    "settings.support.docs": "Beta plan & docs",
 
     "model.vision": "Vision model",
     "model.planner": "Planner model",

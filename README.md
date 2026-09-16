@@ -4,9 +4,9 @@
   <img src="assets/varen-cad-logo.svg" alt="Varen CAD logo" width="300"/>
 </p>
 
-> **把草图变成可制造的三维模型。** Varen CAD 是一个面向机械工程师的 AI 建模 IDE：
+> **会交付证据的机械设计 Agent。** Varen CAD 是一个面向机械工程师的本地 AI 建模 IDE：
 > AI agent 像工程师一样逐步自主建模，你随时看进度、改参数、确认关键决策，
-> 并保留参数化特征历史、精确 BRep 几何与可重放历史。
+> 并保留参数化特征历史、精确 BRep 几何与可重放历史——碰撞与契约不过关就不交付。
 
 <p align="center">
   <b><a href="https://vanyu0710.github.io/aicad/">🌊 产品落地页</a></b> &nbsp;·&nbsp;
@@ -42,9 +42,13 @@
   <img alt="CAD kernel" src="https://img.shields.io/badge/CAD%20kernel-MechKernel%20(Build123d)-green" />
 </p>
 
-> ⚠️ **License**：本项目仓库当前未附带 LICENSE 文件；所依赖的 CAD 内核
-> [`mechcad-kernel`](https://github.com/vanyu0710/mechcad-kernel) 采用 **AGPL-3.0-or-later**。
-> 若你计划闭源分发，请先处理内核许可证问题。
+> ⚠️ **License**：主仓与 CAD 内核 [`mechcad-kernel`](https://github.com/vanyu0710/mechcad-kernel)
+> 均为 **AGPL-3.0-or-later**。社区使用与贡献按 AGPL；闭源分发 / OEM 集成需商业许可（双许可策略见
+> [docs/license-strategy.md](docs/license-strategy.md)）。
+>
+> 🚧 **状态**：v0.21.0-beta 封闭测试中——正在招募设计伙伴（见
+> [docs/beta.md](docs/beta.md)）。本产品的交付物是**可验证、可编辑的参数化装配原型**，
+> 用于概念设计与快速原型；`production_ready` 恒为 false，未经工程师复核不得直接投产。
 
 ---
 

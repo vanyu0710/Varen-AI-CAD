@@ -78,6 +78,7 @@ export default function TopCommandBar({
             type="button"
             title={t("top.focus.title")}
             className={focusMode ? "focus-toggle active" : "focus-toggle"}
+            aria-pressed={focusMode}
             onClick={() => setUi({ focusMode: !focusMode })}
           >
             {t("top.focus")}

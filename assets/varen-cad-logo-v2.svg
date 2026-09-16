@@ -1,0 +1,24 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 260" role="img" aria-labelledby="title desc">
+  <title id="title">Varen CAD logo v2</title>
+  <desc id="desc">A minimal cyan crescent and wave mark forming a geometric V, with the Varen CAD wordmark.</desc>
+  <defs>
+    <linearGradient id="mark" x1="16" y1="20" x2="205" y2="210" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#8AF3FF"/><stop offset=".58" stop-color="#22D3EE"/><stop offset="1" stop-color="#0891B2"/>
+    </linearGradient>
+    <linearGradient id="type" x1="270" y1="0" x2="700" y2="0" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#D8F8FC"/><stop offset="1" stop-color="#8BE8F2"/>
+    </linearGradient>
+  </defs>
+  <g transform="translate(24 24)">
+    <rect width="212" height="212" rx="58" fill="#061A2B"/>
+    <path d="M159 32a48 48 0 1 0 0 96 42 42 0 1 1 0-96Z" fill="url(#mark)"/>
+    <path d="M33 125 76 171l43-46 43 46 31-33" fill="none" stroke="url(#mark)" stroke-width="13" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M37 191h144" stroke="#155E75" stroke-width="4" stroke-linecap="round"/>
+    <path d="M48 201h122" stroke="#0E7490" stroke-width="3" stroke-linecap="round" opacity=".7"/>
+  </g>
+  <g transform="translate(286 65)">
+    <text x="0" y="78" fill="url(#type)" font-family="Segoe UI, Arial, sans-serif" font-size="82" font-weight="650" letter-spacing="3">VAREN</text>
+    <text x="4" y="132" fill="#42D8E9" font-family="Segoe UI, Arial, sans-serif" font-size="30" font-weight="600" letter-spacing="13">CAD</text>
+    <path d="M4 155h342" stroke="#22D3EE" stroke-width="4" stroke-linecap="round" opacity=".8"/>
+  </g>
+</svg>

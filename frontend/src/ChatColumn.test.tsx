@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import ChatColumn from "./layout/ChatColumn";
 import { useAppStore } from "./store";
@@ -121,7 +121,66 @@ describe("ChatColumn", () => {
     expect(screen.getByText("高速级主动轮")).toBeInTheDocument();
     // 分组标题带完成进度
     expect(screen.getByText("1/2")).toBeInTheDocument();
+    expect(screen.getByText("1/2").closest(".plan-step-part-title")).not.toHaveClass("done");
+    const details = document.querySelector("details.plan-card") as HTMLDetailsElement;
+    expect(details.open).toBe(false);
+    fireEvent.click(details.querySelector("summary")!);
+    expect(details.open).toBe(true);
     expect(screen.getByText("建小齿轮")).toBeInTheDocument();
     expect(screen.getByText("建箱体")).toBeInTheDocument();
+  });
+});
+
+function interactionProps() {
+  return { chat: [], chatMessage: "把盲孔深度改为 6mm", busy: false,
+    engineLabel: "Worker", questions: [], imageFile: null, planMode: false,
+    onPlanModeChange: vi.fn(), onClarificationContinue: vi.fn(),
+    onChatMessageChange: vi.fn(), onSendChat: vi.fn(), onImageChange: vi.fn() };
+}
+
+describe("ChatColumn input and reading position", () => {
+  it("uses multiline input; only plain Enter sends", () => {
+    const props = interactionProps();
+    render(<ChatColumn {...props} />);
+    const input = screen.getByRole("textbox");
+    expect(input.tagName).toBe("TEXTAREA");
+    fireEvent.keyDown(input, { key: "Enter", shiftKey: true });
+    fireEvent.keyDown(input, { key: "Enter", isComposing: true });
+    fireEvent.keyDown(input, { key: "Enter", keyCode: 229 });
+    expect(props.onSendChat).not.toHaveBeenCalled();
+    fireEvent.keyDown(input, { key: "Enter" });
+    expect(props.onSendChat).toHaveBeenCalledTimes(1);
+    fireEvent.change(input, { target: { value: "第一行\n第二行" } });
+    expect(props.onChatMessageChange).toHaveBeenCalledWith("第一行\n第二行");
+  });
+
+  it("does not submit whitespace through the keyboard", () => {
+    const props = { ...interactionProps(), chatMessage: "  \n " };
+    render(<ChatColumn {...props} />);
+    fireEvent.keyDown(screen.getByRole("textbox"), { key: "Enter" });
+    expect(props.onSendChat).not.toHaveBeenCalled();
+    expect(screen.getByRole("button", { name: "发送" })).toBeDisabled();
+  });
+
+  it("keeps history in place during streaming and can resume following", () => {
+    const props = interactionProps();
+    const entry = { id: "a", role: "assistant" as const, text: "building", hasImage: false,
+      status: "streaming" as const, tools: [], snapshots: [] };
+    const { container, rerender } = render(<ChatColumn {...props} chat={[entry]} />);
+    const stream = container.querySelector(".chat-stream") as HTMLDivElement;
+    Object.defineProperties(stream, { scrollHeight: { value: 1000, configurable: true },
+      clientHeight: { value: 200, configurable: true } });
+    stream.scrollTop = 100;
+    fireEvent.scroll(stream);
+    rerender(<ChatColumn {...props} chat={[{ ...entry, text: "more output" }]} />);
+    expect(stream.scrollTop).toBe(100);
+    fireEvent.click(screen.getByRole("button", { name: /回到最新消息/ }));
+    expect(stream.scrollTop).toBe(1000);
+    expect(screen.queryByRole("button", { name: /回到最新消息/ })).not.toBeInTheDocument();
+    stream.scrollTop = 800;
+    fireEvent.scroll(stream);
+    Object.defineProperty(stream, "scrollHeight", { value: 1200 });
+    rerender(<ChatColumn {...props} chat={[{ ...entry, text: "latest output" }]} />);
+    expect(stream.scrollTop).toBe(1200);
   });
 });

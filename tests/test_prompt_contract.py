@@ -50,6 +50,16 @@ class PromptStructureTests(unittest.TestCase):
         for phrase in self.CONTRACTS_EN:
             self.assertIn(phrase, text, f"英文提示词丢契约: {phrase}")
 
+    def test_local_edit_and_evidence_contracts_in_both_languages(self) -> None:
+        for lang, phrases in {
+            "zh": ['query(what="holes")', "局部修改优先", "未检查", "housing_design 的 WARN", "不得为消除报错擅自把盲孔改通孔", "零硬碰撞不等于"],
+            "en": ['query(what="holes")', "Prefer local edits", "not checked", "housing_design WARN", "Never silently turn a blind hole", "Zero hard collisions does not verify"],
+        }.items():
+            text = get_prompt("agent_modeling", lang)
+            for phrase in phrases:
+                with self.subTest(lang=lang, phrase=phrase):
+                    self.assertIn(phrase, text)
+
     def test_language_override_env_roundtrip(self) -> None:
         """MECHCAD_PROMPTS_FILE 覆盖入口（A/B 基准用）。"""
         import os

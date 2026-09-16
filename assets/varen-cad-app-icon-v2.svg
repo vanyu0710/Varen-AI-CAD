@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" role="img" aria-labelledby="title">
+  <title id="title">Varen CAD app icon v2</title>
+  <defs><linearGradient id="mark" x1="30" y1="24" x2="220" y2="226" gradientUnits="userSpaceOnUse"><stop stop-color="#8AF3FF"/><stop offset=".58" stop-color="#22D3EE"/><stop offset="1" stop-color="#0891B2"/></linearGradient></defs>
+  <rect width="256" height="256" rx="64" fill="#061A2B"/>
+  <path d="M180 38a55 55 0 1 0 0 110 48 48 0 1 1 0-110Z" fill="url(#mark)"/>
+  <path d="M31 145 78 194l47-49 47 49 34-37" fill="none" stroke="url(#mark)" stroke-width="15" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M37 219h180" stroke="#155E75" stroke-width="5" stroke-linecap="round"/>
+</svg>

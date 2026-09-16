@@ -1,4 +1,4 @@
-import { useEffect, useRef, type RefObject } from "react";
+import { useEffect, useRef, useState, type RefObject } from "react";
 import ApprovalPanel from "../ApprovalPanel";
 import ClarificationPanel from "../ClarificationPanel";
 import { API_ROOT as apiRoot, type Approval, type PlanState, type PlanStep } from "../api";
@@ -22,7 +22,7 @@ type Props = {
   onChatMessageChange: (value: string) => void;
   onSendChat: () => void;
   onImageChange: (file: File | null) => void;
-  inputRef?: RefObject<HTMLInputElement>;
+  inputRef?: RefObject<HTMLTextAreaElement>;
 };
 
 /** 步骤按零件分组（保留原顺序；无 part 归入"通用"组，part 为空串）。 */
@@ -62,10 +62,18 @@ export default function ChatColumn({
   const t = useT();
   const agentRunning = useAppStore((state) => state.agentRunning);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
-  const streamEndRef = useRef<HTMLDivElement | null>(null);
+  const streamRef = useRef<HTMLDivElement | null>(null);
+  const followingRef = useRef(true);
+  const [following, setFollowing] = useState(true);
+  const jumpToLatest = () => {
+    const stream = streamRef.current;
+    if (stream) stream.scrollTop = stream.scrollHeight;
+    followingRef.current = true;
+    setFollowing(true);
+  };
 
   useEffect(() => {
-    streamEndRef.current?.scrollIntoView?.({ block: "end" });
+    if (!chat.length || followingRef.current) jumpToLatest();
   }, [chat]);
 
   return (
@@ -77,7 +85,11 @@ export default function ChatColumn({
       </div>
 
       {plan && plan.steps.length > 0 && (
-        <div className="plan-card">
+        <details className="plan-card">
+          <summary>{t("chat.plan.progress", {
+            done: plan.steps.filter((step) => step.status === "completed").length,
+            total: plan.steps.length,
+          })}</summary>
           {plan.summary && <div className="plan-summary">{plan.summary}</div>}
           {plan.bom && plan.bom.length > 0 && (
             <ul className="plan-bom-summary" data-testid="plan-bom-summary">
@@ -94,8 +106,8 @@ export default function ChatColumn({
             {groupStepsByPart(plan.steps).map((group) => (
               <li key={group.part || "*"} className="plan-step-group">
                 {group.part ? (
-                  <div className={`plan-step-part-title ${group.done ? "done" : ""}`}>
-                    {group.done ? "✓" : "○"} {group.part}
+                  <div className={`plan-step-part-title ${group.done === group.steps.length ? "done" : ""}`}>
+                    {group.done === group.steps.length ? "✓" : "○"} {group.part}
                     <span className="plan-step-part-progress">{group.done}/{group.steps.length}</span>
                   </div>
                 ) : null}
@@ -113,7 +125,7 @@ export default function ChatColumn({
               </li>
             ))}
           </ol>
-        </div>
+        </details>
       )}
 
       {pendingApprovals && pendingApprovals.length > 0 && onResolveApproval && (
@@ -127,7 +139,12 @@ export default function ChatColumn({
         </div>
       )}
 
-      <div className="chat-stream">
+      <div className="chat-stream" ref={streamRef} onScroll={(event) => {
+        const stream = event.currentTarget;
+        const nearBottom = stream.scrollHeight - stream.scrollTop - stream.clientHeight < 64;
+        followingRef.current = nearBottom;
+        setFollowing(nearBottom);
+      }}>
         {chat.length === 0 && <p className="empty-note">{t("task.chat.empty")}</p>}
         {chat.map((entry) => (
           <div key={entry.id} className={`chat-entry ${entry.role}`}>
@@ -161,9 +178,12 @@ export default function ChatColumn({
             )}
           </div>
         ))}
-        <div ref={streamEndRef} />
+
       </div>
 
+      {!following && <button type="button" className="chat-jump-latest" onClick={jumpToLatest}>
+        {t("chat.latest")}
+      </button>}
       <div className="chat-box">
         {imageFile && (
           <div className="chat-attach-bar">
@@ -175,7 +195,8 @@ export default function ChatColumn({
         )}
         <div className="chat-row">
           <span className="chat-prompt" aria-hidden="true">❯</span>
-          <input
+          <textarea
+            rows={3}
             ref={inputRef}
             className="chat-input"
             value={chatMessage}
@@ -183,9 +204,10 @@ export default function ChatColumn({
             placeholder={t("task.chat.placeholder")}
             aria-label={t("task.chat.placeholder")}
             onKeyDown={(event) => {
+              if (event.nativeEvent.isComposing || event.nativeEvent.keyCode === 229) return;
               if (event.key === "Enter" && !event.shiftKey) {
                 event.preventDefault();
-                onSendChat();
+                if (chatMessage.trim()) onSendChat();
               }
             }}
           />
@@ -202,6 +224,7 @@ export default function ChatColumn({
             type="button"
             className="chat-attach"
             title={t("chat.attach.title")}
+            aria-label={t("chat.attach.title")}
             onClick={() => fileInputRef.current?.click()}
           >
             ＋

@@ -262,8 +262,11 @@ def run_sandboxed(code: str, variables: dict | None = None,
                 child_env[key] = os.environ[key]
                 break
     try:
+        # 打包模式下 sys.executable 是主程序 exe，不能当解释器用；
+        # 发行版通过 MECHCAD_SANDBOX_PYTHON 指向随包 embeddable python。
+        python = os.environ.get("MECHCAD_SANDBOX_PYTHON") or sys.executable
         proc = subprocess.run(
-            [sys.executable, "-I", "-c", _RUNNER],
+            [python, "-I", "-c", _RUNNER],
             input=payload.encode("utf-8"),
             capture_output=True,
             timeout=timeout,

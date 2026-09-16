@@ -24,7 +24,11 @@ def run_freecad_worker(
     plan_path = run_dir / "feature_plan.json"
     plan_path.write_text(plan.model_dump_json(indent=2), encoding="utf-8")
     worker = Path(__file__).resolve().parents[1] / "cad_worker" / "freecad_executor.py"
-    command = [sys.executable, str(worker), "--plan", str(plan_path), "--out", str(run_dir), "--lang", language]
+    if getattr(sys, "frozen", False):
+        # 打包模式：worker 脚本随 exe 冻结在资源目录，用 --cad-worker 自举启动
+        command = [sys.executable, "--cad-worker", "--plan", str(plan_path), "--out", str(run_dir), "--lang", language]
+    else:
+        command = [sys.executable, str(worker), "--plan", str(plan_path), "--out", str(run_dir), "--lang", language]
     engine = os.getenv("MECHCAD_CAD_ENGINE", "build123d").strip().lower() or "build123d"
     logs: list[str] = [f"Starting controlled {engine} CAD worker for run {run_id} (timeout={timeout}s)."]
     stop_watcher = threading.Event()

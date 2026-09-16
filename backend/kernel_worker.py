@@ -79,6 +79,19 @@ class KernelWorkerClient:
     def _spawn(self) -> subprocess.Popen:
         env = os.environ.copy()
         env["PYTHONIOENCODING"] = "utf-8"
+        if getattr(sys, "frozen", False):
+            # 打包模式：kernel server 已随 exe 冻结，用自身 --kernel 模式起子进程
+            return subprocess.Popen(
+                [sys.executable, "--kernel"],
+                cwd=str(Path(sys.executable).resolve().parent),
+                stdin=subprocess.PIPE,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+                encoding="utf-8",
+                env=env,
+                windowsHide=True,
+            )
         env["PYTHONPATH"] = str(self.kernel_repo) + os.pathsep + env.get("PYTHONPATH", "")
         return subprocess.Popen(
             [self.python, str(self.kernel_repo / "mech_kernel" / "server.py")],

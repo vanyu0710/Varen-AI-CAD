@@ -630,6 +630,12 @@ def _stop_agent_run(project_id: str) -> bool:
     if run is None:
         return False
     run["stop"].set()
+    # v0.22：唤醒可能阻塞在审批 wait 的线程（否则最长挂到超时；期间 run 已不在
+    # 注册表，用户点批准只会得到 409 “No running agent”，审批卡片永远挂着）。
+    try:
+        run["approvals"].cancel_all("agent 已被停止，未答复的审批自动取消。")
+    except Exception:  # noqa: BLE001 —— 唤醒失败不阻塞停止流程
+        pass
     return True
 
 
@@ -853,6 +859,12 @@ def _run_agent_thread(
             run = _agent_runs.get(project_id)
             if run is not None and run["stop"] is stop_event:
                 _agent_runs.pop(project_id, None)
+        # 线程收尾兜底：无论正常结束/崩溃，都不留无人应答的审批（resolve 会 404，
+        # 前端据此移除卡片，而不是 409 卡死）。
+        try:
+            approvals.cancel_all("agent 会话已结束，未答复的审批自动取消。")
+        except Exception:  # noqa: BLE001
+            pass
 
 
 def _result_artifact_set(run_id: str, result: AgentLoopResult) -> ArtifactSet:

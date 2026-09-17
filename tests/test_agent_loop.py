@@ -430,6 +430,32 @@ class AgentLoopApprovalTests(unittest.TestCase):
         self.assertTrue(any(e[0] == "approval_required" for e in events))
         self.assertTrue(result.ok)
 
+    def test_destructive_op_cancelled_by_session_end(self) -> None:
+        """v0.22：审批被 cancel_all（stop/会话结束）→ 立即返回 cancelled，
+        op 不执行、loop 不挂起，工具结果标注 SESSION_ENDED。"""
+        from backend.agent.approvals import ApprovalBroker
+
+        broker = ApprovalBroker(timeout=30)
+        worker = FakeWorker()
+
+        def chat(messages, tools):
+            if not any(m.get("role") == "tool" for m in messages):
+                return _round_with_call("delete_feature", {"feature_id": "F_0001"})
+            return ToolCallRound(text="结束", tool_calls=[])
+
+        def cancel_after():
+            import time as _t
+
+            _t.sleep(0.15)
+            broker.cancel_all()
+
+        t = threading.Thread(target=cancel_after)
+        t.start()
+        result = _run(worker, chat, approvals=broker)
+        t.join(timeout=2)
+        self.assertNotIn("delete_feature", [op for op, _ in worker.executed])
+        self.assertTrue(result.ok or result.error, "loop 应在 cancelled 后正常收尾而非挂起")
+
     def test_destructive_op_reject_skips_op(self) -> None:
         from backend.agent.approvals import ApprovalBroker
 

@@ -72,6 +72,36 @@ class ApprovalBrokerTests(unittest.TestCase):
         self.assertEqual(decision["action"], "timeout")
         self.assertGreaterEqual(time.time() - started, 0.1)
 
+    def test_cancel_all_wakes_pending_wait_with_cancelled(self) -> None:
+        broker = ApprovalBroker(timeout=30)
+        result: dict = {}
+
+        def requester() -> None:
+            result["decision"] = broker.request(kind="destructive_op", op="delete_feature", args={}, message="m")
+
+        t = threading.Thread(target=requester)
+        t.start()
+        time.sleep(0.2)
+        cancelled = broker.cancel_all("会话已结束")
+        t.join(timeout=2)
+        self.assertEqual(cancelled, 1)
+        self.assertFalse(t.is_alive(), "cancel_all 必须立即唤醒阻塞的 wait")
+        self.assertEqual(result["decision"]["action"], "cancelled")
+
+    def test_resolve_after_cancel_raises_keyerror(self) -> None:
+        broker = ApprovalBroker(timeout=5)
+        request = broker.create(kind="ask_user", op="ask_user", args={}, message="m")
+        broker.cancel_all()
+        with self.assertRaises(KeyError):
+            broker.resolve(request.approval_id, "approve")
+        started = time.time()
+        decision = broker.wait(request)  # 事件已置位：不得再阻塞 5s
+        self.assertEqual(decision["action"], "cancelled")
+        self.assertLess(time.time() - started, 1.0)
+
+    def test_cancel_all_on_empty_returns_zero(self) -> None:
+        self.assertEqual(ApprovalBroker(timeout=5).cancel_all(), 0)
+
     def test_resolve_unknown_id_raises(self) -> None:
         broker = ApprovalBroker(timeout=5)
         with self.assertRaises(KeyError):

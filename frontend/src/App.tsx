@@ -10,6 +10,7 @@ import {
   fetchKernelFeatureTree,
   fetchProject,
   generateProject,
+  isStaleApprovalError,
   listProjects,
   redo,
   renameProject,
@@ -161,6 +162,12 @@ export default function App() {
       await resolveAgent(project.project_id, { approval_id: approval.approval_id, action, args_override: argsOverride });
       setPendingApprovals(pendingApprovals.filter((item) => item.approval_id !== approval.approval_id));
     } catch (err) {
+      // v0.22：审批已失效（agent 停止/结束、审批取消）→ 移除卡片，不再对死 run 重试
+      if (isStaleApprovalError(err)) {
+        setPendingApprovals(pendingApprovals.filter((item) => item.approval_id !== approval.approval_id));
+        setError(t("app.agent.approval_stale"));
+        return;
+      }
       setError(t("app.agent.resolve_failed", { err: String(err) }));
     }
   };
@@ -453,6 +460,9 @@ export default function App() {
       }
       if (event.type === "agent_done") {
         setAgentRunning(false);
+        // v0.22：run 已结束，未答复的审批卡片随之失效（后端已 cancel_all），清掉防止
+        // 用户点进 409 “No running agent” 死循环。
+        setPendingApprovals([]);
         // Do NOT clear liveMesh here: the committed artifact set is fetched
         // asynchronously below, and clearing now would blank the viewport at
         // exactly the moment the finished model should be visible. The viewport

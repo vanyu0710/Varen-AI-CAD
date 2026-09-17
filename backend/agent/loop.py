@@ -217,6 +217,8 @@ def _format_ask_user_transcript(questions: list[dict[str, Any]], answers: dict[s
         return "用户跳过了本次提问（未给出答案）。请基于合理工程假设继续，并在最终总结里标注这些假设。"
     if action == "timeout":
         return "用户未在时限内响应本次提问，视为未回答。请基于合理工程假设继续，并在最终总结里标注这些假设。"
+    if action == "cancelled":
+        return "本次提问随会话结束被取消（未回答）。请基于合理工程假设继续，并在最终总结里标注这些假设。"
     lines: list[str] = []
     for question in questions:
         value = answers.get(question["id"])
@@ -1081,10 +1083,11 @@ class AgentLoop:
                     data = {"success": False, "error_kind": "REJECTED",
                             "error": "用户拒绝了破坏性替换。除非用户明确要求，否则不要重试。", "suggestion": decision.get("message", "")}
                     self._emit_step(self.step_count, op, data, autofix=True, message="破坏性修复被用户拒绝")
-                elif decision["action"] == "timeout":
+                elif decision["action"] in ("timeout", "cancelled"):
                     data = {"success": False, "error_kind": "REJECTED",
                             "error": decision.get("message", "用户未在时限内响应，视为拒绝破坏性替换。不要重试，可换方案或继续。")}
-                    self._emit_step(self.step_count, op, data, autofix=True, message="破坏性修复超时，视为拒绝")
+                    self._emit_step(self.step_count, op, data, autofix=True,
+                                    message="破坏性修复超时，视为拒绝" if decision["action"] == "timeout" else "破坏性修复随会话结束取消")
                 else:
                     merged = filter_args_to_schema(op, dict(decision.get("args") or proposed_args), self.capabilities)
                     self.step_count += 1
@@ -1134,6 +1137,9 @@ class AgentLoop:
                 return {"success": False, "error_kind": "REJECTED",
                         "error": "用户拒绝了该步骤。除非用户明确要求，否则不要重试该操作；可改用其它方案或跳过。",
                         "suggestion": decision.get("message", "")}
+            if decision["action"] == "cancelled":
+                return {"success": False, "error_kind": "SESSION_ENDED",
+                        "error": decision.get("message", "会话已结束，审批自动取消。")}
             if decision["action"] == "timeout":
                 return {"success": False, "error_kind": "REJECTED",
                         "error": decision.get("message", "用户未在时限内响应，视为拒绝。不要重试该操作，可换方案或继续。")}
@@ -1362,7 +1368,7 @@ class AgentLoop:
             if isinstance(raw_answers, dict):
                 answers = raw_answers
         transcript = _format_ask_user_transcript(questions, answers, action)
-        result = {"success": True, "declined": action in ("reject", "timeout"), "answers": answers, "transcript": transcript}
+        result = {"success": True, "declined": action in ("reject", "timeout", "cancelled"), "answers": answers, "transcript": transcript}
         return tool_result_message(tool_call, json.dumps(result, ensure_ascii=False), protocol=self.protocol)
 
     # ---------------------------------------------------- design research

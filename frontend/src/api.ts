@@ -503,6 +503,15 @@ export async function deleteKernelFeature(projectId: string, featureId: string) 
   return parseResponse<{ ok: boolean; project: ProjectState }>(response);
 }
 
+/**
+ * v0.22：审批答复失败时判断"该审批已失效"（agent 已停止/结束、审批已取消或过期）。
+ * 命中则前端应移除卡片而不是让用户对死 run 反复重试（后端 409/404 文案）。
+ */
+export function isStaleApprovalError(err: unknown): boolean {
+  const message = err instanceof Error ? err.message : String(err);
+  return /No running agent|not found or already resolved|不存在或已过期/i.test(message);
+}
+
 /** UI 显示的密钥掩码（***configured[:尾号]***）在探测请求中视同"未填"，走服务端 env 兜底。 */
 export const KEY_MASK_PREFIX = "***configured";
 

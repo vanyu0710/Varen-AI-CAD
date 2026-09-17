@@ -1,7 +1,20 @@
 import { describe, expect, it } from "vitest";
-import { artifactUrl, assemblyArtifactUrl, resolveApiRoot, resolveWsRoot, withStrippedKeyMasks } from "./api";
+import { artifactUrl, assemblyArtifactUrl, isStaleApprovalError, resolveApiRoot, resolveWsRoot, withStrippedKeyMasks } from "./api";
 import { DEFAULT_SETTINGS } from "./store";
 import type { ModelConfig } from "./api";
+
+describe("stale approval errors (v0.22)", () => {
+  it("recognizes dead-run and expired-approval details", () => {
+    expect(isStaleApprovalError(new Error("No running agent for this project"))).toBe(true);
+    expect(isStaleApprovalError(new Error("Approval not found or already resolved: approval-1"))).toBe(true);
+    expect(isStaleApprovalError(new Error("审批不存在或已过期: approval-1"))).toBe(true);
+  });
+
+  it("does not swallow ordinary failures", () => {
+    expect(isStaleApprovalError(new Error("HTTP 500 from upstream"))).toBe(false);
+    expect(isStaleApprovalError("boom")).toBe(false);
+  });
+});
 
 describe("assembly artifact urls (v0.14 F2a)", () => {
   it("builds library file urls with encoding", () => {

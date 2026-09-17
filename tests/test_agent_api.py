@@ -328,6 +328,29 @@ class AgentResolveTests(unittest.TestCase):
                                 json={"approval_id": "approval-x", "action": "approve"})
         self.assertEqual(resp.status_code, 409)
 
+    def test_stop_cancels_pending_approval_and_wakes_thread(self) -> None:
+        """v0.22 回归：stop 不得让审批线程挂到超时；pending 审批即刻 cancelled。"""
+        broker, aid = self._make_running_run()
+        try:
+            with main_module._agent_lock:
+                requester = main_module._agent_runs[self.project_id]["_requester"]
+            resp = self.client.post(f"/api/projects/{self.project_id}/agent/stop", json={})
+            self.assertEqual(resp.status_code, 200)
+            requester.join(timeout=3)
+            self.assertFalse(requester.is_alive(), "审批线程应被 cancel_all 立即唤醒")
+            with main_module._agent_lock:
+                run = main_module._agent_runs.get(self.project_id)
+            box = (run or {}).get("_result_box") if run else None
+            # run 已被 stop 弹出；决策通过 broker 语义验证：pending 已清空
+            with broker._lock:
+                self.assertEqual(broker._requests, {})
+            # 停止后再答复 → 409（无运行中 agent），前端据此移除卡片
+            late = self.client.post(f"/api/projects/{self.project_id}/agent/resolve",
+                                    json={"approval_id": aid, "action": "approve"})
+            self.assertEqual(late.status_code, 409)
+        finally:
+            self._cleanup_run()
+
     def test_resolve_without_project_404(self) -> None:
         resp = self.client.post("/api/projects/nope/agent/resolve",
                                 json={"approval_id": "approval-x", "action": "approve"})

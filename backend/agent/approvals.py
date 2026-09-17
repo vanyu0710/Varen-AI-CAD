@@ -91,9 +91,26 @@ class ApprovalBroker:
         timed_out = not request._event.wait(timeout=self._timeout)
         with self._lock:
             self._requests.pop(request.approval_id, None)
-        if timed_out:
+        if timed_out and request._result is None:
             return {"action": "timeout", "message": f"用户未在 {self._timeout:.0f}s 内响应，已跳过该步骤"}
         return dict(request._result or {"action": "reject", "message": "无结果"})
+
+    def cancel_all(self, reason: str = "agent 会话已结束，未答复的审批已自动取消") -> int:
+        """唤醒所有阻塞在 wait() 的审批（停止/线程退出路径）。
+
+        v0.22 修复：此前 stop 只置 stop_event，agent 线程仍会卡在 wait 直到
+        600s 超时——期间 run 已从注册表移除，用户点批准只会得到
+        “No running agent”，卡片永远挂着。取消后 wait 立即返回
+        {"action": "cancelled"}，loop 按拒绝处理并因 stop_event 退出。
+        """
+        with self._lock:
+            requests = list(self._requests.values())
+            self._requests.clear()
+        for request in requests:
+            if request._result is None:
+                request._result = {"action": "cancelled", "message": reason}
+            request._event.set()
+        return len(requests)
 
     def request(
         self,

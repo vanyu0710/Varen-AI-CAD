@@ -35,3 +35,22 @@ feature contracts or interference checks fail. AGPL, Windows beta, STEP output.
 - [ ] 两仓库 README/贡献规则重读（是否要求特定格式/栏目位置/去重声明）
 - [ ] 星数与演示数据以 benchmark/results 可复跑记录为准（禁用词过 positioning.md）
 - [ ] 一次 PR 一件事；被拒不重投同格式，改按 maintainer 意见调整
+
+## 发射位步骤（用户确认后执行，今天不提交）
+
+```bash
+# awesome-cad（mlightcad/awesome-cad）
+gh repo fork mlightcad/awesome-cad --clone   # 或网页 Fork + git clone
+cd awesome-cad && git checkout -b add-varen-cad
+#   → 在 README.md 的 AI/generative 或合适分区插入 §B 条目
+git commit -s -m "Add Varen CAD — auditable local-first CAD agent"
+git push origin add-varen-cad
+#   → 网页对 upstream 提 PR；标题同上；正文用本文件 §B + 一句"why it fits"
+
+# earthtojake/text-to-cad（先查其收录形态：若仅收 skills 则走变体方案 §A note）
+#   → 同流程，正文用 §A；若提 skill 包，附最小示例：
+#     "Use Varen CAD MCP/API to build an audited parametric flange" （待我们暴露 MCP 后）
+```
+
+**注**：GitHub CLI 未装时可全部走网页（Fork → 在线编辑 → Propose changes → PR）。
+PR 描述第一行必须含可点开的 demo 证据链：releases 下载 + benchmark/results 目录。

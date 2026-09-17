@@ -12,6 +12,7 @@
   <b><a href="https://github.com/vanyu0710/aicad/releases/tag/v0.21.0-beta">⬇️ 下载 v0.21.0-beta（Windows）</a></b> &nbsp;·&nbsp;
   <b><a href="https://vanyu0710.github.io/aicad/">🌊 产品落地页</a></b> &nbsp;·&nbsp;
   <a href="docs/beta.md">申请成为设计伙伴</a> &nbsp;·&nbsp;
+  <a href="https://github.com/vanyu0710/aicad/issues/new?template=task_failure.yml">📮 报告任务失败</a> &nbsp;·&nbsp;
   <a href="https://vanyu0710.github.io/mechcad-kernel/">内核文档</a> &nbsp;·&nbsp;
   <a href="docs/USER_GUIDE.md">用户指南</a>
 </p>
@@ -377,7 +378,11 @@ git diff --check
 - [FEATURE_SUPPORT.md](FEATURE_SUPPORT.md) —— 真正实现 / 部分 / 不支持 的功能矩阵
 - [DEVELOPMENT.md](DEVELOPMENT.md) —— 环境、测试、安全加特性
 - [docs/USER_GUIDE.md](docs/USER_GUIDE.md) —— 新手使用教程
-- 内核路线图：`G:\lfy design\ai cad\mechcad-kernel\docs\mechkernel-harness-roadmap.md`（P0–P2 已落地，P3/P4 待做）
+- [KNOWN_ISSUES.md](KNOWN_ISSUES.md) —— 安装前必读：边界、已知问题、隐私说明
+- [docs/beta.md](docs/beta.md) —— 封闭 Beta 计划与设计伙伴规则
+- [docs/launch/weekly/](docs/launch/weekly/) —— 失败周报（成功与失败同权重）
+- [benchmark/tasks.yaml](benchmark/tasks.yaml) —— 公开基准任务集（含负例）
+- 内核路线图：[mechcad-kernel/docs/mechkernel-harness-roadmap.md](https://github.com/vanyu0710/mechcad-kernel/blob/main/docs/mechkernel-harness-roadmap.md)（P0–P2 已落地，P3/P4 待做）
 - 旧 Gradio MVP：`legacy/gradio/`（参考用，需在 `PYTHONPATH` 下启动）
 
 ---

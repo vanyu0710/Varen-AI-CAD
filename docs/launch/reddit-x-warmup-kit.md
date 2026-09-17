@@ -1,5 +1,13 @@
 # Reddit + X 预热发射包（2026-09-17 · 已扫禁用词 · 数字均有 benchmark/CHANGELOG 依据）
 
+> ⛔ **r4 状态（同日）：本文件第 2 节（Reddit 产品型主帖）作废，暂停使用 7–14 天。**
+> 复盘：新号低信用 + 产品型帖 = 低质量推广信号叠加，继续跨版发相似内容会伤害账号。
+> Reddit 现行策略：只做无链接的社区参与（回答 CAD/B-Rep/STEP/参数化问题、评论 AI CAD 局限）；
+> 未来首发形态改**问题型/实验型/开放基准型**（如 "I'm building an open benchmark for AI-generated
+> mechanical assemblies — what failure cases should it include?"），产品链接沉到评论、不作主要 CTA。
+> 第 1 节 X build-in-public 素材保留（5% 实验线，不设 KPI）。本文件的精力配额已让位给
+> `定向触达名册-第一层.md`（高接触设计伙伴）。
+
 > 用法：复制粘贴即用。X 今天可发；Reddit 按第 2 节的节奏表执行（新号先养 3–5 天）。
 > 配图位置见文末素材表；发任何一帖前最后自查一次 positioning.md 禁用词。
 

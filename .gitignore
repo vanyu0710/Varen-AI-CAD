@@ -26,3 +26,7 @@ packaging/build/
 # Python 嵌入式运行时（构建输入，可由 python.org embeddable 3.12 重建）
 packaging/runtime/
 node_modules/
+
+# 一次性补丁脚本（scratch，非产品代码）
+work_handler.py
+work_wire_tool.py

@@ -41,7 +41,7 @@
   <a href="https://github.com/vanyu0710/aicad/releases/tag/v0.21.0-beta"><img alt="Release" src="https://img.shields.io/badge/release-v0.21.0--beta-orange?logo=github" /></a>
   <img alt="Status" src="https://img.shields.io/badge/status-closed%20beta-blue" />
   <img alt="Python" src="https://img.shields.io/badge/python-3.12-blue" />
-  <img alt="Tests" src="https://img.shields.io/badge/tests-468%20backend%20%2B%2092%20frontend-brightgreen" />
+  <img alt="Tests" src="https://img.shields.io/badge/tests-473%20backend%20%2B%2094%20frontend-brightgreen" />
   <img alt="License" src="https://img.shields.io/badge/license-AGPL--3.0--or--later-green" />
   <img alt="UI" src="https://img.shields.io/badge/UI-React%20%2B%20Three.js-61dafb" />
   <img alt="CAD kernel" src="https://img.shields.io/badge/CAD%20kernel-MechKernel%20(Build123d)-green" />
@@ -83,7 +83,7 @@ Varen CAD 把 **MechKernel 参数化 CAD 内核**（真实 OCC 7.9.3 几何）�
    │
    ▼
 ┌──────────────────────── AI Agent（harness）────────────────────────┐
-│  LLM 原生 function calling 逐步调用内核 34 个公开 op                │
+│  LLM 原生 function calling 逐步调用内核 36 个公开 op                │
 │  每步: 观察 → 决策(工具调用) → 执行 → 读回 StepResult → 自修复       │
 │  流式: 模型文字 token 级 SSE → WS agent_text_delta → 打字机          │
 │  会话: 每项目一条持久会话（/agent/message + /agent/session）         │
@@ -100,10 +100,10 @@ Varen CAD 把 **MechKernel 参数化 CAD 内核**（真实 OCC 7.9.3 几何）�
 └──────────────────────────────────────────────────────────────────────┘
 ```
 
-**不是"让 AI 写任意 Python"**。执行层被严格约束在 34 个经验证的公开 op 上，
+**不是"让 AI 写任意 Python"**。执行层被严格约束在 36 个经验证的公开 op 上，
 每步都有结构化反馈（`StepResult`）与几何验证，失败可自动修复或回退。
 
-## 界面预览（v0.10.0-alpha 实测截图）
+## 界面预览（实测截图）
 
 **启动页** —— 深蓝夜空品牌主页，后端连接状态、最近项目、新建入口一目了然：
 
@@ -209,6 +209,10 @@ npm run dev
 14. **七模块系统提示词（v0.15）**：角色/建模原则/工作流程/API 规范/验证/修复/输出格式结构化重写（中英同步），结构由测试锁死；BOM 参数表（key_params）与 SUCCESS/PARTIAL/FAILED 三态由程序判定；`MECHCAD_PROMPTS_FILE` 支持提示词 A/B 基准（scripts/ab_prompt_housing.py）
 15. **几何语义闭环（v0.16）**：同名返工原子换版、BOM 为装配事实来源（计划外零件名 BOM_UNKNOWN_PART 拒绝、历史残留标 superseded 排除）；未豁免硬碰撞阻断导出（INTERFERENCE_BLOCKED），豁免须声明 category fit|mesh；feature_contract 支持孔语义契约 {type: through_hole|blind_hole, diameter_mm, count, positions}——外凸台冒充通孔被内核分类器直接拒绝。
 16. **变速箱最新全流程实测（v0.16 代码）**：真实 LLM 53 步 / 758s 一次通过——8 件（3 真渐开线齿轮 + 4 阶梯轴 + 箱体，全 script 件）逐件过 strict 验证与孔语义契约，装配 28 对干涉全查、2 对啮合区按 category=mesh 豁免、硬碰撞 0；首轮曾被硬碰撞门拦下并自行返工轴/齿轮位姿（同名原子换版）。
+17. **专业 CAD 视口（v0.19）**：工程 CAD 风格着色——按内核材质表分材质（铸铁/钢/青铜…）、曲面平滑 + 特征棱线锐利、**正交投影默认**（可切透视）、**剖切视图**（X/Y/Z + 偏移 + 翻转）、渲染质量档位（高/标准，DPR 与棱线预算），光照按 CAD 视口调平不做过曝。
+18. **模型配置控制台（v0.20）**：设置中心 → 模型，专业 harness 级配置台——13 家**厂商预置**一点自动填 Base URL/协议/推荐模型、**拉取模型列表**（服务端代理 `GET /models`，可搜索下拉）、API Key 尾号掩码徽章（`已保存 ····abcd`）、**每角色生成参数**（温度/最大 token/超时/重试，留空跟随 .env 与代码默认）、连接诊断（**延迟 ms + 模型回显 + 端点**）、导出 JSON / 复制 .env（密钥自动脱敏）。
+19. **右键零件透明度（v0.21）**：视口里右键任意零件 → SolidWorks 式菜单：不透明 / 半透明 / 透明、隐藏零件、全部显示；半透明件内部齿轮一眼看穿（棱线同步淡出、关深度写入防闪烁），悬停高亮 + 指针光标，底部芯片汇总"隐藏 N · 透明 N"并可一键恢复；右键拖拽是平移不会误弹菜单。
+20. **审批可靠性（v0.22）**：agent 停止/崩溃/结束时，未答复的审批由 broker 立即取消并唤醒等待线程（不再挂到超时），前端随 `agent_done` 清空审批卡；对已失效审批的答复会移除卡片并提示，而不是反复报 "No running agent"。
 
 ---
 
@@ -267,6 +271,11 @@ aicad/
 │  └─ geometry/              # (冻结) 只读 BRep 测量/证据/语义验证
 ├─ cad_worker/               # (冻结) 旧受控 build123d subprocess
 ├─ frontend/                 # React + TypeScript + Vite + Three.js
+│  ├─ src/Viewport.tsx            # 3D 视口：CAD 着色/正交/剖切/右键透明度
+│  ├─ src/ModelConfigPanel.tsx    # 模型配置台（厂商画廊/拉模型/参数/诊断）
+│  ├─ src/materials.ts            # 视口材质表（与内核 materials.py 一致性测试）
+│  ├─ src/providers.ts            # 厂商预置库（Base URL/协议/推荐模型）
+│  ├─ src/partVisual.ts           # 零件透明度/拾取纯逻辑（含单测）
 │  ├─ src/KernelFeatureTree.tsx   # 特征树(内核 feature_graph)
 │  ├─ src/KernelFeatureForm.tsx   # 属性面板(改参数→update_feature)
 │  └─ src/ApprovalPanel.tsx       # 审批卡
@@ -287,7 +296,9 @@ aicad/
 | **建模能力** | 以 MechKernel capability registry 为准：workplane / sketch / extrude / revolve / sweep / boolean / hole(任意方向) / fillet / chamfer / shell / pattern / select 选边选面 / 测量 / undo-redo |
 | **AI agent** | 原生 function calling 逐步驱动 34 公开 op（含 `make_gear` 真渐开线齿轮）；`RECOVERABLE` 自修复（schema 过滤 `suggestion.fix`）；`design_calculate` 设计调研（内置工程计算 + 受限纯算术沙箱）；**`run_build_script` 代码通道**（复杂零件一次脚本完成，几何仍只能走内核 k 门面，失败自动回滚回传 traceback，脚本 op 可参数重放） |
 | **多零件流程** | 复杂任务自动进计划模式 → 调研 → BOM 计划审批 → `finish_part` 逐件建模归档（零件级 STEP/STL + reset 清会话）；**单实体设计复检门**（悬浮特征机器拦截）；四视角证据快照 |
-| **人机协作** | 三类确认点（破坏性操作 / 破坏性修复 / ask_user）→ 审批卡 approve-edit-reject；暂停接管→交还 |
+| **人机协作** | 三类确认点（破坏性操作 / 破坏性修复 / ask_user）→ 审批卡 approve-edit-reject；暂停接管→交还；run 结束后审批卡自动清理（v0.22） |
+| **3D 视口** | 工程 CAD 风格：按内核材质表分材质着色、正交/透视切换、剖切（X/Y/Z + 偏移 + 翻转）、质量档位、**右键零件透明度/隐藏**（SW 习惯）、悬停高亮；装配按位姿叠加、可显隐/点选 |
+| **模型配置** | 设置中心模型控制台：厂商预置画廊、拉取模型列表、每角色生成参数（温度/token/超时/重试）、连接诊断（延迟+回显+端点）、密钥尾号掩码、导出 JSON/.env（脱敏） |
 | **几何验证** | 每步 `validate_geometry` + `select` 几何摘要回喂；收尾 `validate_geometry(standard)`；不再依赖语义 verifier（D3） |
 | **导出** | STEP、STL（agent 路径）；旧 worker 还产 OBJ/report.md（保留） |
 | **旧 FeaturePlanV3 链** | **冻结**（`box_base`/`hole`/`groove` 等特征矩阵见 `FEATURE_SUPPORT.md`，已不在默认 UI 展示） |
@@ -303,7 +314,11 @@ aicad/
 - `prompts.py` —— 从 `prompts/prompts.yaml` 加载集中式提示词。
 - `gen` prompt `agent_modeling` 指导 agent 用 `ask_user` 向用户提问关键尺寸。
 
-模型配置来自 per-project `settings`，回退到环境变量 `MECHCAD_PLANNER_*` / `MECHCAD_VISION_*`。
+模型配置来自 per-project `settings`，回退到环境变量 `MECHCAD_PLANNER_*` / `MECHCAD_VISION_*`；
+设置中心 → **模型** 提供可视化配置台（厂商预置 / 拉取模型列表 / 每角色生成参数 / 连接诊断），
+每角色的温度、最大 token、超时、重试按 **项目配置 > 环境变量 > 代码默认** 解析后传入每次调用。
+API Key 只保存在服务端，回传 UI 的永远是带尾号的掩码（`***configured:abcd***`），
+任何掩码值提交都视为"不修改"，`generate` 携带掩码配置也不会覆盖已存密钥。
 未配置模型时，旧链路有本地确定性 stub；agent 路径需配置 planner 模型才能运行。
 
 ---
@@ -331,9 +346,11 @@ npm run build
 git diff --check
 ```
 
-核心覆盖：`tests/test_agent_loop.py`（agent 循环 + 审批/自修复/超时）、`test_approvals.py`（审批 broker）、
-`test_kernel_worker.py`（RPC client）、`test_agent_api.py`（agent/kernel REST），以及前端
-`KernelFeatureTree.test.tsx`、`KernelFeatureForm.test.tsx`、`ApprovalPanel.test.tsx`。
+核心覆盖：`tests/test_agent_loop.py`（agent 循环 + 审批/自修复/超时）、`test_approvals.py`（审批 broker：取消/超时/答复）、
+`test_kernel_worker.py`（RPC client）、`test_agent_api.py`（agent/kernel REST）、`test_v20_model_console.py`（模型配置台：参数优先级/拉模型列表/密钥掩码往返）；
+前端 `KernelFeatureTree.test.tsx`、`KernelFeatureForm.test.tsx`、`ApprovalPanel.test.tsx`、`ModelConfigPanel.test.tsx`（模型台交互）、
+`partVisual.test.ts`（视口透明度/拾取纯逻辑）、`providers.test.ts`（厂商库数据合法性）。
+内核自身套件在 `mechcad-kernel/mech_kernel/tests/`，用其仓库 `.venv` 跑：`python -m pytest mech_kernel/tests`。
 
 > 旧链路测试（`test_validation` / `test_geometry_*` / `test_cad_worker` 等）保留但不再驱动新功能。
 
@@ -345,7 +362,8 @@ git diff --check
 
 - `POST /api/projects` → 创建项目
 - `GET /api/projects` / `GET/PATCH/DELETE /api/projects/{id}` → 读/改名/更新设置/删除
-- `POST /api/model/test` → 测试模型连接（不泄漏 API key）
+- `POST /api/model/test` → 测试模型连接（延迟 / 回显 / 端点诊断，不泄漏 API key）
+- `POST /api/model/list` → 代理拉取厂商模型列表（`GET /models`，密钥只在请求头，不泄漏）
 
 **Agent（主路径）**
 

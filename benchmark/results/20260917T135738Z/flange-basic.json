@@ -1,0 +1,40 @@
+{
+  "task_id": "flange-basic",
+  "name": "法兰（op 路径冒烟）",
+  "group": "smoke",
+  "prompt": "做一块 120×120×12 的方法兰，中心 Ø30 通孔， 6 个 Ø8 螺栓孔均布在 Ø90 分度圆上。",
+  "app_version": "0.21.0-beta",
+  "started_at": "2026-09-17T13:57:56.008247+00:00",
+  "model": {
+    "name": "Qwen3.8-Flash",
+    "base_url": "https://api.scnet.cn/api/llm/v1",
+    "protocol": "openai"
+  },
+  "duration_s": 162.6,
+  "steps": 6,
+  "status": "SUCCESS",
+  "ok": true,
+  "error": null,
+  "error_kind": null,
+  "parts_count": 0,
+  "parts": [],
+  "assembly": null,
+  "design_calculations": 0,
+  "step_files": [
+    "model.step"
+  ],
+  "artifacts": {
+    "stl": "G:\\lfy design\\ai cad\\varen cad\\aicad\\work\\new_arch_runs\\bench-flange-basic-1789653476\\model.stl",
+    "snapshot_s2": "G:\\lfy design\\ai cad\\varen cad\\aicad\\work\\new_arch_runs\\bench-flange-basic-1789653476\\snapshot_s2.png",
+    "snapshot_s6": "G:\\lfy design\\ai cad\\varen cad\\aicad\\work\\new_arch_runs\\bench-flange-basic-1789653476\\snapshot_s6.png",
+    "step": "G:\\lfy design\\ai cad\\varen cad\\aicad\\work\\new_arch_runs\\bench-flange-basic-1789653476\\model.step",
+    "execution_report": "G:\\lfy design\\ai cad\\varen cad\\aicad\\work\\new_arch_runs\\bench-flange-basic-1789653476\\execution_report.json"
+  },
+  "events_captured": 311,
+  "run_dir": "work\\new_arch_runs\\bench-flange-basic-1789653476",
+  "verdict": "PASS",
+  "reasons": [
+    "OK"
+  ],
+  "final_text_excerpt": "## 状态：SUCCESS（单件任务，已导出 STEP）\n\n**单位：mm**\n\n### 参数表（脚本顶部定义，可参数重放）\n| 变量 | 值 | 来源 |\n|---|---|---|\n| W 外形边长 | 120 | 用户指定 |\n| T 厚度 | 12 | 用户指定 |\n| BORE_D 中心孔 | 30 | 用户指定 |\n| BOLT_D 螺栓孔 | 8 | 用户指定 |\n| BCD 分度圆 | 90 | 用户指定 |\n| N_BOLT 孔数 | 6 | 用户指定 |\n| 孔拉伸深度 | T+2 = 14 | **假设**：超出面 2mm 保证完全贯通（非用户尺寸） |\n\n### 零件与实测关键尺寸\n方法兰 1 件，实体数 1：\n- 外形包围盒 −60…60 × −60…60 × 0…12 → 120×120×12 ✔\n- 孔语义实测（`query what=holes`）共 **7 个，全部 through=true、depth=12.0**：\n  - 1× Ø30 中心通孔，孔心 (0, 0)\n  - 6× Ø8 通孔，孔心半径 45.0（=Ø90 BCD），角度 0°/60°/120°/180°/240°/300°：\n    (45,0)、(22.5,38.97)、(−22.5,38.97)、(−45,0)、(−22.5,−38.97)、(22.5,−38.97) ✔ "
+}

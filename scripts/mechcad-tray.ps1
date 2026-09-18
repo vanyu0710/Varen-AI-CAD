@@ -20,6 +20,8 @@ $IconPath = Join-Path $Root "assets\mechcad.ico"
 $ScriptPath = Join-Path $PSScriptRoot "mechcad-tray.ps1"
 $Url = "http://127.0.0.1:$Port/"
 $HealthUrl = "http://127.0.0.1:$Port/api/health"
+# 健康检查接受的服务名（产品更名前后都要认，避免启动器误判"服务未运行"）
+$KnownServiceNames = @("varen-cad-api", "mechcad-ide-api")
 $MutexName = "MechCAD-Launcher-$Port"
 $Script:BackendProcess = $null
 $Script:StartedBackend = $false
@@ -58,25 +60,34 @@ function Show-Balloon([string]$Title, [string]$Text) {
 }
 
 function Test-Health {
+  # 服务名在产品更名时由 mechcad-ide-api 改为 varen-cad-api。两个都接受，
+  # 否则启动器永远认为服务没在运行：会重复启动 → 绑定 8001 失败 → 误报
+  # "后端服务启动失败"（v0.23 修复）。
   try {
     $response = Invoke-RestMethod -Uri $HealthUrl -Method Get -TimeoutSec 2
-    return ($response.status -eq "ok" -and $response.service -eq "mechcad-ide-api")
+    return ($response.status -eq "ok" -and ($KnownServiceNames -contains $response.service))
   } catch {
     return $false
   }
 }
 
 function Test-PortInUse([int]$ListenPort) {
-  $listener = $null
+  # 用"能否连上"判断端口是否已被监听。bind 试探在 Windows 上不可靠：
+  # 是否冲突取决于已监听 socket 的 SO_REUSEADDR/SO_EXCLUSIVEADDRUSE 组合，
+  # 实测出现过同一端口时而判忙时而判闲；connect 直接回答"有没有人在听"。
+  $client = $null
   try {
-    $listener = [System.Net.Sockets.TcpListener]::new([System.Net.IPAddress]::Loopback, $ListenPort)
-    $listener.Start()
-    return $false
+    $client = [System.Net.Sockets.TcpClient]::new()
+    $task = $client.ConnectAsync("127.0.0.1", $ListenPort)
+    if (-not $task.Wait(600)) {
+      return $false
+    }
+    return $client.Connected
   } catch {
-    return $true
+    return $false
   } finally {
-    if ($listener) {
-      try { $listener.Stop() } catch {}
+    if ($client) {
+      try { $client.Close() } catch {}
     }
   }
 }
@@ -316,11 +327,21 @@ try {
     Show-Balloon "Varen CAD IDE" "正在启动后端服务..."
     Start-Backend
     if (-not (Wait-BackendReady)) {
-      Show-BackendFailure "后端服务启动失败。"
-      Stop-Backend
-      exit 1
+      # 复核：后端启动失败最常见的原因其实是"服务已经在跑"（健康检查超时或
+      # 端口被占）。此时应复用而不是报"启动失败"——v0.23 前这里会让用户以为
+      # 后台坏了。
+      if (Test-Health -or (Test-PortInUse $Port)) {
+        Write-LauncherLog "backend start failed but port $Port already serving; reusing"
+        Show-Balloon "Varen CAD IDE" "服务已在运行：$Url"
+        Stop-Backend
+      } else {
+        Show-BackendFailure "后端服务启动失败。"
+        Stop-Backend
+        exit 1
+      }
+    } else {
+      Write-LauncherLog "backend ready on port $Port"
     }
-    Write-LauncherLog "backend ready on port $Port"
   }
 
   Ensure-Shortcut

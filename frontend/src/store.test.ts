@@ -4,6 +4,7 @@ import {
   DEFAULT_DESCRIPTION_ZH,
   MAX_DRAWER_WIDTH,
   MIN_DRAWER_WIDTH,
+  PROJECT_SCOPED_RESET,
   clampDrawerWidth,
   markStartupSeen,
   readLanguage,
@@ -177,5 +178,55 @@ describe("agent chat snapshots (v0.10)", () => {
     expect(chat).toHaveLength(2);
     expect(chat[1].role).toBe("assistant");
     expect(chat[1].snapshots).toHaveLength(1);
+  });
+});
+
+describe("project-scoped reset (v0.23 串台修复)", () => {
+  it("clears every field that belongs to the current project", () => {
+    // 用 store 自身 API 造出"上一个项目"的残留状态
+    useAppStore.getState().appendChatUser("上一个项目的对话");
+    useAppStore.getState().appendChatAssistantDelta("上一个项目的流式回复");
+    useAppStore.getState().addEvents(["上一个项目的事件"]);
+    useAppStore.getState().setProcessSteps([{ stage: "cad", status: "completed", message: "旧步骤", at: "t" } as never]);
+    useAppStore.setState({
+      selectedFeatureId: "F_0001",
+      chatMessage: "打了一半的草稿",
+      agentRunning: true,
+      agentSteps: 7,
+      agentLastOp: "extrude",
+      plan: { summary: "上一个项目的计划", steps: [], approved: true },
+      pendingApprovals: [{
+        approval_id: "approval-1",
+        kind: "destructive_op",
+        op: "delete_feature",
+        args: {},
+        message: "要删除吗？",
+        options: {},
+        context: "",
+      }],
+    });
+
+    useAppStore.setState(PROJECT_SCOPED_RESET);
+
+    const state = useAppStore.getState();
+    expect(state.selectedFeatureId).toBe("");
+    expect(state.chatMessage).toBe("");
+    expect(state.events).toEqual([]);
+    expect(state.processSteps).toEqual([]);
+    expect(state.chat).toEqual([]);
+    expect(state.plan).toBeNull();
+    expect(state.pendingApprovals).toEqual([]);
+    expect(state.agentRunning).toBe(false);
+    expect(state.agentSteps).toBe(0);
+    expect(state.agentLastOp).toBe("");
+  });
+
+  it("keeps non-project state (language, ui, settings) untouched", () => {
+    useAppStore.setState({ chat: [{ id: "c1", role: "user", text: "x", hasImage: false, status: "done", tools: [], snapshots: [] }] });
+    useAppStore.getState().setLanguage("en");
+    useAppStore.setState(PROJECT_SCOPED_RESET);
+    expect(useAppStore.getState().language).toBe("en");
+    expect(useAppStore.getState().ui.leftTab).toBe("feature");
+    expect(useAppStore.getState().settings.operation_mode).toBe("strict");
   });
 });

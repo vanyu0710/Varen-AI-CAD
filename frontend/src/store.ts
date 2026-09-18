@@ -156,6 +156,27 @@ type AppState = {
 
 let chatEntrySeq = 0;
 
+/**
+ * 项目级状态：切换 / 新建 / 删除项目时必须整体复位（v0.23 串台修复）。
+ *
+ * 这些字段都属于"当前项目"，跨项目残留会让新项目显示上一个项目的内容——
+ * 最典型的是 liveMesh（上一个项目的实时预览 STL 会显示在全新项目里）、
+ * 审批卡、agent 运行态与事件流。App 的 resetProjectScopedState 会应用本表，
+ * 并额外清理 App 内的 useState（liveMesh / assemblyHidden / assemblySelected / error）。
+ */
+export const PROJECT_SCOPED_RESET = {
+  selectedFeatureId: "",
+  chatMessage: "",
+  events: [],
+  processSteps: [],
+  chat: [],
+  plan: null,
+  pendingApprovals: [],
+  agentRunning: false,
+  agentSteps: 0,
+  agentLastOp: "",
+} satisfies Partial<AppState>;
+
 function nextChatId(role: string) {
   chatEntrySeq += 1;
   return `chat-${role}-${Date.now()}-${chatEntrySeq}`;

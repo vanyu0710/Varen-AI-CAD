@@ -39,6 +39,7 @@ import Viewport, { type AssemblyModel } from "./Viewport";
 import { useT } from "./i18n";
 import {
   DEFAULT_SETTINGS,
+  PROJECT_SCOPED_RESET,
   markStartupSeen,
   readStartupMode,
   shouldShowStartup,
@@ -260,23 +261,28 @@ export default function App() {
     setShowStartup(false);
   };
 
+  // v0.23：切换/新建/删除项目时整体复位项目级状态。此前 liveMesh（上一个项目的
+  // 实时预览）、审批卡、agent 运行态、事件流都会残留到新项目——表现就是"串台"。
+  const resetProjectScopedState = () => {
+    useAppStore.setState(PROJECT_SCOPED_RESET);
+    setLiveMesh(null);
+    setAssemblyHidden([]);
+    setAssemblySelected(null);
+    setError("");
+  };
+
   const handleNewProject = async () => {
     // 已有未提交工作（会话或特征）时先确认，避免误清当前项目
     if (project && !window.confirm(t("app.new.confirm"))) {
       return;
     }
     setBusy(true);
-    setError("");
+    resetProjectScopedState();
     try {
       const { project: next } = await createProject(t("app.project.untitled"));
       setProject(next);
       setSettings(next.settings);
       setSettingsDirty(false);
-      setSelectedFeatureId("");
-      clearEvents();
-      setProcessSteps([]);
-      setChat([]);
-      setPlan(null);
       enterWorkspace();
       setBackendState("connected");
       await refreshProjects();
@@ -290,7 +296,7 @@ export default function App() {
 
   const handleOpenProject = async (projectId: string) => {
     setBusy(true);
-    setError("");
+    resetProjectScopedState();
     try {
       const next = await fetchProject(projectId);
       const fallback = project?.project_id === projectId ? settings : { ...DEFAULT_SETTINGS };
@@ -298,8 +304,6 @@ export default function App() {
       setProject({ ...next, settings: mergedSettings });
       setSettings(mergedSettings);
       setSettingsDirty(false);
-      setSelectedFeatureId("");
-      setProcessSteps([]);
       enterWorkspace();
       setBackendState("connected");
       await refreshProjects();
@@ -335,6 +339,7 @@ export default function App() {
     try {
       await deleteProject(projectId);
       if (project?.project_id === projectId) {
+        resetProjectScopedState();
         setProject(null);
         setShowStartup(true);
       }

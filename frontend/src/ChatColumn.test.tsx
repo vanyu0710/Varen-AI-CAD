@@ -183,4 +183,67 @@ describe("ChatColumn input and reading position", () => {
     rerender(<ChatColumn {...props} chat={[{ ...entry, text: "latest output" }]} />);
     expect(stream.scrollTop).toBe(1200);
   });
+
+  it("renders unconfigured warning banner and opens settings when clicked", () => {
+    const onOpenSettings = vi.fn();
+    render(
+      <ChatColumn
+        chat={[]}
+        chatMessage=""
+        busy={false}
+        engineLabel="Worker"
+        questions={[]}
+        imageFile={null}
+        planMode={false}
+        isPlannerConfigured={false}
+        onOpenSettings={onOpenSettings}
+        onPlanModeChange={vi.fn()}
+        onClarificationContinue={vi.fn()}
+        onChatMessageChange={vi.fn()}
+        onSendChat={vi.fn()}
+        onImageChange={vi.fn()}
+      />
+    );
+    expect(screen.getByText(/未配置 Planner 模型/)).toBeInTheDocument();
+    fireEvent.click(screen.getByText(/未配置 Planner 模型/));
+    expect(onOpenSettings).toHaveBeenCalled();
+  });
+
+  it("renders assistant error bubble with action button", () => {
+    const onOpenSettings = vi.fn();
+    render(
+      <ChatColumn
+        chat={[
+          {
+            id: "err1",
+            role: "assistant",
+            text: "当前未配置建模 Planner 模型",
+            hasImage: false,
+            status: "done",
+            tools: [],
+            snapshots: [],
+            error: true,
+            action: { type: "open_settings" },
+          },
+        ]}
+        chatMessage=""
+        busy={false}
+        engineLabel="Worker"
+        questions={[]}
+        imageFile={null}
+        planMode={false}
+        onOpenSettings={onOpenSettings}
+        onPlanModeChange={vi.fn()}
+        onClarificationContinue={vi.fn()}
+        onChatMessageChange={vi.fn()}
+        onSendChat={vi.fn()}
+        onImageChange={vi.fn()}
+      />
+    );
+    expect(screen.getByText("当前未配置建模 Planner 模型")).toBeInTheDocument();
+    const actionBtn = screen.getByRole("button", { name: "前往配置模型" });
+    expect(actionBtn).toBeInTheDocument();
+    fireEvent.click(actionBtn);
+    expect(onOpenSettings).toHaveBeenCalledTimes(1);
+  });
 });

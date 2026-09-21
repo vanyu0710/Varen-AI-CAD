@@ -161,4 +161,26 @@ describe("SettingsDialog", () => {
     await user.selectOptions(selects[3], "aggressive_fill");
     expect(onChange).toHaveBeenCalledWith(expect.objectContaining({ smart_fill_policy: "aggressive_fill" }));
   });
+  it("auto-saves changes on close if dirty", async () => {
+    const user = userEvent.setup();
+    const onApply = vi.fn();
+    const onClose = vi.fn();
+    render(
+      <SettingsDialog
+        open
+        settings={DEFAULT_SETTINGS}
+        dirty={true}
+        saving={false}
+        notice=""
+        startupMode="always"
+        onClose={onClose}
+        onChange={vi.fn()}
+        onApply={onApply}
+        onStartupModeChange={vi.fn()}
+      />,
+    );
+    await user.click(screen.getByRole("button", { name: "完成" }));
+    expect(onApply).toHaveBeenCalledTimes(1);
+    expect(onClose).toHaveBeenCalledTimes(1);
+  });
 });

@@ -251,6 +251,37 @@ class KernelWorkerEditCommandsTests(unittest.TestCase):
         self.assertEqual(sent1["cmd"], "redo")
         self.assertEqual(sent1["payload"], {"steps": 2})
 
+    def test_select_topology_at_point_rpc(self) -> None:
+        """M1 语义选择 RPC：点/射线/公差原样传给 kernel。"""
+        client, proc = _make_client([self._echo_payload("select_topology_at_point")])
+        data = client.select_topology_at_point((1, 2, 3), (0, 0, -1), tolerance_mm=0.25)
+        self.assertTrue(data["success"])
+        sent = json.loads(proc.written_lines[0])
+        self.assertEqual(sent["cmd"], "select_topology_at_point")
+        self.assertEqual(sent["payload"], {
+            "point": [1, 2, 3],
+            "direction": [0, 0, -1],
+            "tolerance_mm": 0.25,
+        })
+
+    def test_query_topology_rpc(self) -> None:
+        """M1 语义 ID 反查：只传稳定 ID，不传数组下标。"""
+        client, proc = _make_client([self._echo_payload("query_topology")])
+        data = client.query_topology("edge:sha256:test")
+        self.assertTrue(data["success"])
+        sent = json.loads(proc.written_lines[0])
+        self.assertEqual(sent["cmd"], "query_topology")
+        self.assertEqual(sent["payload"], {"id": "edge:sha256:test"})
+
+    def test_measure_topology_rpc(self) -> None:
+        """M2 工程测量：语义 ID 数组原样传给 kernel。"""
+        client, proc = _make_client([self._echo_payload("measure_topology")])
+        data = client.measure_topology(["edge:sha256:a", "face:sha256:b"])
+        self.assertTrue(data["success"])
+        sent = json.loads(proc.written_lines[0])
+        self.assertEqual(sent["cmd"], "measure_topology")
+        self.assertEqual(sent["payload"], {"topology_ids": ["edge:sha256:a", "face:sha256:b"]})
+
     def test_run_script_rpc(self) -> None:
         """v0.13 代码通道 RPC：cmd=run_script，payload 带 code/name。"""
         client, proc = _make_client([self._echo_payload("run_script")])

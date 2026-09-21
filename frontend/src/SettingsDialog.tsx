@@ -38,21 +38,27 @@ export default function SettingsDialog({
   const closeRef = useRef<HTMLButtonElement | null>(null);
   const [tab, setTab] = useState<Tab>("general");
 
+  const handleClose = () => {
+    if (dirty && !saving) {
+      onApply();
+    }
+    onClose();
+  };
+
   useEffect(() => {
     if (!open) {
       return;
     }
-    // 打开时聚焦关闭按钮；Escape 关闭
     closeRef.current?.focus();
     const onKey = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
         event.preventDefault();
-        onClose();
+        handleClose();
       }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [open, onClose]);
+  }, [open, dirty, saving, onClose, onApply]);
 
   if (!open) {
     return null;
@@ -60,7 +66,7 @@ export default function SettingsDialog({
 
   return (
     <div className="modal-backdrop" role="presentation" onMouseDown={(event) => {
-      if (event.target === event.currentTarget) onClose();
+      if (event.target === event.currentTarget) handleClose();
     }}>
       <section className="settings-dialog settings-console" role="dialog" aria-modal="true" aria-label={t("settings.title")}>
         <header className="settings-header">
@@ -68,7 +74,7 @@ export default function SettingsDialog({
             <p className="eyebrow">VAREN CAD · MODEL CONSOLE</p>
             <h2>{t("settings.title")}</h2>
           </div>
-          <button type="button" ref={closeRef} className="icon-button" onClick={onClose} title={t("settings.close.title")}>
+          <button type="button" ref={closeRef} className="icon-button" onClick={handleClose} title={t("settings.close.title")}>
             {t("settings.close")}
           </button>
         </header>
@@ -203,7 +209,7 @@ export default function SettingsDialog({
               {saving ? t("model.saving") : t("model.apply")}
             </button>
           )}
-          <button type="button" className="primary" onClick={onClose}>
+          <button type="button" className="primary" onClick={handleClose}>
             {t("settings.done")}
           </button>
         </footer>

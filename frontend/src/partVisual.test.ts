@@ -4,6 +4,8 @@ import {
   bodyOpacity,
   clampMenuPos,
   edgeOpacity,
+  isPartHidden,
+  mergeHiddenNames,
   pickPartName,
 } from "./partVisual";
 
@@ -58,8 +60,30 @@ describe("pickPartName", () => {
     ).toBe("bearing");
   });
 
+  it("skips the stencil helper mesh that shares the part's geometry", () => {
+    // 辅助网格也带 partName，必须靠 isStencilHelper 标记剔除
+    expect(pickPartName([mesh("gear", { isStencilHelper: true }), mesh("gear")])).toBe("gear");
+  });
+
   it("returns null when nothing pickable", () => {
     expect(pickPartName([])).toBeNull();
     expect(pickPartName([{ isMesh: true, visible: true, userData: {} }])).toBeNull();
+  });
+});
+
+describe("hidden state union", () => {
+  it("isPartHidden ORs the viewport-local flag with the panel's list", () => {
+    expect(isPartHidden("gear", undefined, [])).toBe(false);
+    expect(isPartHidden("gear", true, [])).toBe(true);
+    expect(isPartHidden("gear", undefined, ["gear"])).toBe(true);
+    expect(isPartHidden("gear", false, ["gear"])).toBe(true);
+    expect(isPartHidden("gear", false, ["shaft"])).toBe(false);
+    expect(isPartHidden("gear", undefined, undefined)).toBe(false);
+  });
+
+  it("mergeHiddenNames dedupes so 'show all' clears both sources", () => {
+    expect(mergeHiddenNames(["gear"], ["gear", "shaft"])).toEqual(["gear", "shaft"]);
+    expect(mergeHiddenNames([], undefined)).toEqual([]);
+    expect(mergeHiddenNames(["a"], [])).toEqual(["a"]);
   });
 });

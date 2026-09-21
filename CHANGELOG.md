@@ -1,3 +1,133 @@
+## v0.22.0-beta - 项目品牌统一为 Varen CAD 与工业视口 BRep 拓扑语义交互 (2026-09-21)
+
+- **品牌统一与工程治理**：
+  - 正式将对外项目名确立为 **Varen CAD**（前端同步更名为 aren-cad-frontend）；
+  - 健全顶级开源规范文件：新增 SECURITY.md, CODE_OF_CONDUCT.md, CITATION.cff, SUPPORT.md, CODEOWNERS，规范 DCO 贡献机制；
+  - 新增双语引导：提供结构化 README.en.md 与《3分钟快速开始》docs/GETTING_STARTED.md。
+- **BRep 拓扑语义与面选择（工业 CAD 真值基石）**：
+  - 支持在视口表面直接拾取真实 OpenCascade BRep 几何面，支持视线射线消歧（优先选择朝向正面的面）；
+  - 获取面分类（圆柱面、平面）、法向轴线、实测孔径、公差边界，告别纯网格猜测。
+- **专业 3D 视口架构重构**：
+  - 修复 Z-up 坐标系下轨道球绕错轴的历史缺陷；
+  - 集成官方真实三维 ViewHelper 替换原先静态立方体，支持各视向自适应取景；
+  - 剖切截面闭环，消除 z-fighting，强化碰撞零件干涉高亮。
+- **质量门禁**：前端 132 项测试全部通过，后端 475 项全量通过。
+
+## Unreleased - 工业 CAD M2：BRep 工程测量（初版）
+
+- **内核测量 RPC**：新增 `measure_topology`。当前支持 1 个圆柱面或圆边的解析直径、2 个圆柱/圆的轴到轴距离、
+  2 个平行平面的面到面距离，以及其他任意 2 个 BRep 拓扑的 OCC `BRepExtrema_DistShapeShape` 最小距离。
+  返回值统一携带 `topology_ids`、`metric`、`result`、`algorithm`、`source=brep`、`units=mm`、
+  `accuracy=0.001` 和 `geometry_revision`；直径 / 距离都返回 `p1` / `p2` 证据点，测量结果可审计、可复核。
+  轴距按解析轴线计算，不会被两个圆柱半径加减成错误的“孔距”；面距按平面方程计算，并返回垂直于两平面的证据段。
+- **语义测量 API**：backend worker 与 FastAPI 新增 `POST /api/projects/{id}/geometry/measure`。
+  请求只接受 1–2 个 `face:` / `edge:` / `vertex:` 语义拓扑 ID，拒绝裸数组下标。无存活 worker 返回 409，
+  kernel 异常返回 502；重建后的旧 ID 走结构化 miss，不伪装成成功测量。
+- **前端测量重构**：测量模式不再用 STL raycast 的点对点距离冒充工程尺寸。点击模型先走 BRep 语义选择；
+  圆柱面 / 圆边立即显示 `Ø`；两个圆柱/圆显示轴距 `A`；两个平行平面显示面距 `F`；其他组合显示最小距离 `L`。
+  视口绘制 kernel 返回的证据点与连线，badge 提示第二对象等待、BRep 错误和结果；模型重建后清空过期测量状态。
+- **测量格式化**：`MeasureResult` 增加 `metric`，`formatMeasureText` 区分 `L:` 与 `Ø:`，避免直径被误读为长度。
+- 测试：kernel 478（新增 topology query / measurement / server RPC 覆盖），backend API + worker 52，
+  frontend 139（新增直径 / 轴距 / 面距格式化），`compileall` 与前端 build 通过。
+
+## Unreleased - 工业 CAD M1：BRep 语义选择（内核真值链路）
+
+- **内核拓扑查询**：新增 `mech_kernel/topology_query.py`，把前端点击的世界坐标映射到 OCC BRep 最近拓扑。
+  面返回类型（plane/cylinder/other）、面积、半径、法向/轴线；边返回 line/circle/ellipse/spline、长度、端点、
+  圆心、半径、轴线/方向；顶点返回坐标。全部带命中点、公差、所属 feature 与 `source=brep`。
+  超出公差返回结构化未命中，不用网格猜测。选择直接使用 OCC whole-shape support（VERTEX/EDGE/FACE），
+  避免复杂零件每次点击全量扫描边/顶点。
+- **相机射线消歧**：`direction` 不再只是保留字段。内核会枚举公差内的多个候选 BRep 面，用真实 BRep 面法向与前端相机射线
+  做点积，优先选择用户视线实际可见的正面；边线/ seam /重叠面不再因“最近距离平票”而随机选到背面。
+- **稳定拓扑标识**：面 ID 不再暴露数组下标（重建后可能重排），改用语义指纹派生 `face:<sha256>`；相同解析面/边界语义稳定，
+  面尺寸或裁剪变化时指纹变化。
+- **RPC/API 链路**：kernel server 新增 `select_topology_at_point`；backend worker 与 FastAPI 新增
+  `POST /api/projects/{id}/geometry/select`。未命中是成功查询（`matched=false`），无存活 worker 返回 409，
+  内核异常返回 502，不再把空选择伪装成传输失败。
+- **语义 ID 反查**：新增 `query_topology` RPC 和
+  `POST /api/projects/{id}/geometry/topology/{topologyId}`。输入只接受 `face:/edge:/vertex:` 语义 ID，
+  拒绝裸数组下标；返回当前 BRep 的几何、display mesh、所属 feature 和 `geometry_revision`。重建后旧 ID
+  变为结构化 miss（`topology_not_found`），为工程测量、参数编辑和工程图引用提供可审计基础。补齐 vertex
+  反查参数错误，新增两顶点通用最小距离测试锁定该链路。
+- **特征树单向联动**：Shift+点击面/边/顶点后，若 BRep 返回 `feature_id`，前端会同步定位结构面板中的
+  对应特征节点；语义面板也显示几何版本，便于判断选择是否来自当前模型状态。
+- **视口交互**：单零件模型支持 **Shift+点击模型面 / 边 / 顶点** 查询 BRep 拓扑语义，面板按拓扑类型显示
+  feature、拓扑 ID、面积、圆柱直径、法向/轴线、边长、圆心、方向、顶点坐标、数据源与精度。装配模式暂不启用，
+  避免把“当前单零件内核几何”错误映射到多个零件。
+- **BRep 拓扑级高亮**：内核为被选中的 OCC face 返回真实 triangulation，为 edge 返回按 BRep 曲线采样的 polyline，
+  为 vertex 返回精确点；前端分别渲染半透明青色面覆盖层/边线/顶点球。不是整零件 emissive，也不是从 STL 三角形里
+  猜一个“近似拓扑”。高亮层遵守剖切裁剪，不参与拾取。
+- **坐标一致性修复**：单零件 STL 加载不再 `geometry.center()`，保留内核世界坐标；否则前端点击点与 OCC BRep
+  坐标错位，语义查询会系统性偏差。
+- **防串态**：语义选择随项目/几何版本（live mesh rev / committed run id）自动清空；请求序号防止慢响应覆盖新点击。
+- 测试：内核 468（新增面/边/顶点拓扑选择、射线消歧与 display mesh），前端 133（API 覆盖 face/edge display 透传），
+  backend API + kernel worker 47，`compileall` 通过。
+
+## Unreleased - 视口 P1 批次：点选 / ViewHelper / 干涉可视化 / Z-up 轨道
+
+- **Z-up 相机 up 向量（结构性缺陷）**：数据（内核 `renderer.py` 的 front/top/side、后端 BOM 位姿）
+  是 Z 向上，但两台相机都留着 three 默认的 `up=(0,1,0)`。后果不是画面错，而是**轨道球绕错轴**：
+  环绕时模型绕竖直数据的横轴打转，且正视视角正好落在轨道极点上。两台相机与 ViewHelper 现统一
+  为 `up=(0,0,1)`。
+- **真 ViewHelper 替代假 ViewCube**：删除原来那个 86px 静态按钮格（以及左下角同信息的静态
+  "X Y Z" 徽章），改用 three 官方 `ViewHelper`——真三维坐标轴 + 可点击标签 + 转向动画。点击时
+  旋转中心取当前观察目标，用户平移过视角后不会跳回原点。渲染侧配套把 `autoClear` 关掉改手动
+  `clear()`（否则 ViewHelper 内部那次叠加 render 会清掉整个主场景）。
+- **逐视向取景**：`setPreset` 过去按包围盒对径一刀切（`size.length()*0.9`），细长轴在正视图里
+  小得看不清。新增 `viewMath.ts`：把包围盒八角投影到相机基底求真实覆盖半径，透视/正交各自换算，
+  前/俯/右/等轴各按自己的视向取景。「适配」保持沿当前视向、不改变观察角度。
+- **左键点选零件**：视口此前左键什么都不做，选中只能从装配面板列表点。现支持左键拾取（含
+  ViewHelper 优先吃事件）、点空白取消、Esc 取消（设置弹窗内不抢按键）。**拖拽旋转不误选**——
+  按下位置位移超过 6px 视为拖拽。
+- **干涉可视化**：装配报告的 `pairs` 早已含零件名与 center 并已在前端类型里，但只被用于计数——
+  「硬碰撞 N」在视口里指不出是哪里。现按 pairs 推出干涉件集合：视口内以告警色标出（优先级
+  选中 > 悬停 > 干涉），左下角读条给出件数，装配面板列出干涉零件并可点击在视口中选中。
+- **光标锚定缩放**：`zoomToCursor = true`，滚轮朝指针下的位置放大而不是永远朝屏幕中心。
+- **剖切回归**：`autoClear=false` 后以真实 11 件装配体复验模板封盖——截面仍实心、通孔仍通、
+  滑块拖动时封盖跟平面走、无 z-fighting。
+- 测试：前端 121（新增 viewMath 12）。**视觉验收以真实 11 件装配体（`work/project_parts/` 的
+  三级减速器）在浏览器中逐项确认**：ViewHelper 点击转向、左键点选（命中最近实体）、拖拽不误选、
+  空白/Esc 取消、前视逐视向取景、剖切封盖、透视切换。
+
+## Unreleased - 视口 P0 批次：剖切封盖 + 坐标约定/视角/加载修复
+
+视口审查（见 `docs/`）确认它目前是"只读网格查看器"而非 CAD 视口。本批先清 P0 缺陷并补上剖切封盖，
+**未触碰 artifact 契约**——面 ID / 内核特征边（真正解锁点选与测量的那一步）留待单独设计。
+
+- **剖切封盖（模板缓冲）**：裁剪后零件只剩开口壳、视口读起来是"空心"。现按 CAD 惯例把切面填实：
+  正面 +1 / 背面 −1 计数，沿视线的「进入次数 − 离开次数」不为 0 即该像素落在材料截面上，据此绘制
+  一块平面（暖调"新切金属"色 `0xb0a693`，与冷色零件区分）。全程 GPU 侧，与零件复杂度无关；
+  通孔正确保留为通孔，掠射角无 z-fighting。**关键前提**：three 的 `WebGLRenderer` 默认
+  `stencil: false`，不显式开启封盖会静默失效。半透明件与线框模式不参与计数（否则模板计数错乱），
+  OBJ 路径无配对背面 pass 也不写模板。
+- **网格朝向修正（P0 缺陷）**：`GridHelper` 默认铺在 XZ 平面（Y 向上），而内核渲染器
+  （`mech_kernel/renderer.py` 的 front/top/side）与视口相机预设都是 **Z 向上**——俯视图下网格会
+  塌成一条线、等轴下竖直穿过模型。现绕 X 转 90° 落到 XY 平面，并随模型自适应尺寸（1/2/5×10ⁿ 取
+  步长，格数落在 12–60）与落位（衬在模型底面、跟随其水平中心）。
+- **每帧 localStorage 读取（P0 缺陷）**：`activeCamera()` 在 `requestAnimationFrame` 循环里每帧同步读
+  `localStorage.getItem`。改为 ref 缓存投影模式。
+- **悬停高亮失效（P0 缺陷）**：悬停过去是命令式改 `emissive`、选中是声明式，两者互相覆盖；一旦被
+  覆盖，`hovered` ref 短路了重设，该零件的悬停高亮再也不出现。现悬停收归声明式状态，所有
+  `emissive`/`opacity`/模板写入统一由一个 effect 负责。
+- **隐藏状态统一（P0 缺陷）**：视口右键隐藏与装配面板勾选是两份独立状态，视口的"全部显示"只清本地，
+  面板里勾掉的零件无法恢复。新增 `onHiddenChange` 回传，隐藏/显示两边同写；新增纯函数
+  `isPartHidden` / `mergeHiddenNames`（含单测）。
+- **视角不再被夺走（P0 缺陷）**：`loaderKey` 一变就整场拆重建、`fitCamera` 复位相机——agent 每产出
+  一版几何就夺走一次视角（53 步就是 53 次）。现视角跨场景重建显式带过去，只在首次加载、切项目
+  （新增 `fitKey`）或用户点「适配」时才重新取景。「适配」也不再顺手把视角转到等轴。
+- **几何缓存**：按 URL 缓存已 crease 平滑的几何与特征棱线，重载时跳过下载与三角化；缓存内的几何
+  不随场景销毁。装配件改版只重载变化的那几件。
+- **逐件加载进度 + 单件失败不再整场清空**：过去整条顺序加载循环只有一个 `loading_stl`，且
+  `statusLabel` 覆盖视口自身状态 → 加载 26 件时用户看到的是项目状态。现给出「加载零件 N/M」进度条；
+  单件失败只记入失败清单，其余零件照常显示（此前一件失败即整场清空）。
+- **WebGL 上下文丢失处理**：混合显卡切换/驱动重置会让上下文丢失且**不 preventDefault 浏览器永不
+  恢复**。现监听 `webglcontextlost`/`webglcontextrestored`，丢失时提示、恢复时重申尺寸与像素比。
+- **缩放限位**：补 `minDistance/maxDistance/minZoom/maxZoom`（此前可一路飞进无穷远）。
+- **剖切数学抽成纯模块 `section.ts`**（`sectionPlane` / `capPlacement` / `gridSpec`）+ 13 项单测，
+  把原先内联在组件里的平面与封盖位姿计算变成可回归的纯函数。
+- 测试：前端 112（新增 section 13 + partVisual 3）。视觉验收：封盖开/关对比、掠射角、俯视图网格
+  朝向均以真实浏览器截图确认。
+
 ## v0.21.0-beta - 发布基础设施 + 视口透明度交互（本次公开前的 P0 批次）
 
 - **版本单一来源**：仓库根 `VERSION`（0.21.0-beta）+ `backend/version.py`；FastAPI `/api/health` 输出真实版本；打包脚本自动读 VERSION 并生成 `.sha256`；spec 随包分发 VERSION/LICENSE。终结 0.6.0/0.1.0/0.14 三处漂移。

@@ -47,16 +47,20 @@ export function clampMenuPos(
 type PickCandidate = {
   isMesh?: boolean;
   visible?: boolean;
-  userData?: { partName?: unknown; isEdgeHelper?: unknown };
+  userData?: { partName?: unknown; isEdgeHelper?: unknown; isStencilHelper?: unknown };
 };
 
-/** 从射线命中（按距离排序）中取第一个"零件主体网格"的名字；跳过棱线与隐藏件。 */
+/**
+ * 从射线命中（按距离排序）中取第一个"零件主体网格"的名字。
+ * 跳过棱线、模板缓冲辅助网格与隐藏件——three 的 Raycaster 不看 `visible`，
+ * 命中里包含隐藏件与辅助网格，必须在这里剔除。
+ */
 export function pickPartName(hits: PickCandidate[]): string | null {
   for (const hit of hits) {
     if (!hit || hit.isMesh !== true || hit.visible === false) {
       continue;
     }
-    if (hit.userData?.isEdgeHelper) {
+    if (hit.userData?.isEdgeHelper || hit.userData?.isStencilHelper) {
       continue;
     }
     const name = hit.userData?.partName;
@@ -65,4 +69,21 @@ export function pickPartName(hits: PickCandidate[]): string | null {
     }
   }
   return null;
+}
+
+/**
+ * 零件是否隐藏。隐藏状态有两份来源：视口右键菜单（本地）与上层装配面板
+ * （`hidden` 属性）。取并集才不会出现「面板里勾回来、视口里还是不见」。
+ */
+export function isPartHidden(
+  name: string,
+  localHidden: boolean | undefined,
+  hiddenNames: string[] | undefined,
+): boolean {
+  return Boolean(localHidden) || (hiddenNames || []).includes(name);
+}
+
+/** 两份隐藏状态的去重并集，用于计数与「全部显示」的清理目标。 */
+export function mergeHiddenNames(local: string[], remote: string[] | undefined): string[] {
+  return Array.from(new Set([...local, ...(remote || [])]));
 }

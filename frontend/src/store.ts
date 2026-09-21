@@ -29,6 +29,8 @@ export type ChatEntry = {
   snapshots: string[];
   /** 是否已在"工具卡片之后的新一轮正文"开头插入过空行（防连行，只插一次）。 */
   broke?: boolean;
+  error?: boolean;
+  action?: { type: "open_settings" };
 };
 
 export const DEFAULT_DESCRIPTION_ZH =
@@ -152,6 +154,7 @@ type AppState = {
   attachChatToolCard: (card: ChatToolCard) => void;
   attachChatSnapshot: (url: string) => void;
   finalizeChatAssistant: () => void;
+  appendChatAssistantError: (message: string, action?: { type: "open_settings" }) => void;
 };
 
 let chatEntrySeq = 0;
@@ -352,6 +355,30 @@ export const useAppStore = create<AppState>((set) => ({
       }
       return {
         chat: [...state.chat, { id: nextChatId("assistant"), role: "assistant", text: "", hasImage: false, status: "streaming", tools: [], snapshots: [url] }],
+      };
+    }),
+  appendChatAssistantError: (message, action) =>
+    set((state) => {
+      const last = state.chat[state.chat.length - 1];
+      if (last && last.role === "assistant" && last.status === "streaming" && !last.text && last.tools.length === 0) {
+        const updated = { ...last, text: message, status: "done" as const, error: true, action };
+        return { chat: [...state.chat.slice(0, -1), updated] };
+      }
+      return {
+        chat: [
+          ...state.chat,
+          {
+            id: nextChatId("assistant"),
+            role: "assistant",
+            text: message,
+            hasImage: false,
+            status: "done",
+            tools: [],
+            snapshots: [],
+            error: true,
+            action,
+          },
+        ],
       };
     }),
   finalizeChatAssistant: () =>

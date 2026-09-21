@@ -196,6 +196,102 @@ export type ModelListResult = {
   message: string;
 };
 
+export type SemanticTrianglesDisplayMesh = {
+  type: "triangles";
+  vertices: [number, number, number][];
+  indices: number[];
+  triangle_count: number;
+  source: "brep";
+};
+
+export type SemanticPolylineDisplayMesh = {
+  type: "polyline";
+  vertices: [number, number, number][];
+  source: "brep";
+};
+
+export type SemanticPointDisplayMesh = {
+  type: "point";
+  point: [number, number, number];
+  source: "brep";
+};
+
+export type SemanticDisplayMesh =
+  | SemanticTrianglesDisplayMesh
+  | SemanticPolylineDisplayMesh
+  | SemanticPointDisplayMesh;
+
+export type SemanticSelection = {
+  topology: {
+    type: string;
+    id: string;
+    kind: string;
+    fingerprint: string;
+  };
+  geometry: Record<string, unknown>;
+  hit?: Record<string, unknown> | null;
+  geometry_revision?: number;
+  feature_id?: string | null;
+  display?: SemanticDisplayMesh | null;
+  source: "brep" | "mesh";
+  units: string;
+  accuracy: number;
+};
+
+export type GeometrySelectResponse = {
+  ok: boolean;
+  part_name?: string | null;
+  matched: boolean;
+  selection: SemanticSelection | null;
+  reason?: string | null;
+  source?: "brep" | "mesh" | null;
+  geometry_revision?: number;
+};
+
+export type GeometryTopologyResponse = {
+  ok: boolean;
+  matched: boolean;
+  selection: SemanticSelection | null;
+  reason?: string | null;
+  geometry_revision?: number | null;
+  source?: "brep" | "mesh" | null;
+};
+
+export type BRepMeasureResult = {
+  p1: [number, number, number];
+  p2: [number, number, number];
+  distance: number;
+  dx: number;
+  dy: number;
+  dz: number;
+};
+
+export type BRepMeasurement = {
+  topology_ids: string[];
+  metric: "diameter" | "minimum_distance" | "axis_to_axis" | "face_to_face";
+  result: BRepMeasureResult;
+  algorithm: string;
+  source: "brep";
+  units: string;
+  accuracy: number;
+  geometry_revision?: number;
+};
+
+export type GeometryMeasureResponse = {
+  ok: boolean;
+  matched: boolean;
+  measurement: BRepMeasurement | null;
+  reason?: string | null;
+  geometry_revision?: number | null;
+  source?: "brep" | "mesh" | null;
+};
+
+export type SemanticPick = {
+  partName: string;
+  point: [number, number, number];
+  direction: [number, number, number];
+};
+
 export type ProjectState = {
   project_id: string;
   name: string;
@@ -483,6 +579,41 @@ export async function fetchAgentSession(projectId: string) {
 export async function fetchKernelFeatureTree(projectId: string) {
   const response = await fetch(`${API_ROOT}/api/projects/${projectId}/kernel/feature_tree`);
   return parseResponse<KernelFeatureTree>(response);
+}
+
+export async function selectGeometryAtPoint(
+  projectId: string,
+  payload: SemanticPick,
+  toleranceMm = 0.2,
+) {
+  const response = await fetch(`${API_ROOT}/api/projects/${projectId}/geometry/select`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      point: payload.point,
+      direction: payload.direction,
+      tolerance_mm: toleranceMm,
+      part_name: payload.partName,
+    }),
+  });
+  return parseResponse<GeometrySelectResponse>(response);
+}
+
+export async function measureTopology(projectId: string, topologyIds: string[]) {
+  const response = await fetch(`${API_ROOT}/api/projects/${projectId}/geometry/measure`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ topology_ids: topologyIds }),
+  });
+  return parseResponse<GeometryMeasureResponse>(response);
+}
+
+export async function fetchGeometryTopology(projectId: string, topologyId: string) {
+  const response = await fetch(
+    `${API_ROOT}/api/projects/${projectId}/geometry/topology/${encodeURIComponent(topologyId)}`,
+    { method: "POST" },
+  );
+  return parseResponse<GeometryTopologyResponse>(response);
 }
 
 export async function updateKernelFeature(projectId: string, featureId: string, newParams: Record<string, unknown>) {

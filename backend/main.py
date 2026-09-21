@@ -50,6 +50,8 @@ from backend.schemas import (
     FeaturePatchRequest,
     FeaturePlanV3,
     GenerateRequest,
+    GeometryMeasureRequest,
+    GeometrySelectRequest,
     KernelDeleteFeatureRequest,
     KernelUpdateFeatureRequest,
     ModelListResponse,
@@ -929,6 +931,90 @@ def kernel_feature_tree(project_id: str):
     data = worker.feature_tree()
     data["node_count"] = len(data.get("graph", {}).get("nodes", {}))
     return data
+
+
+@app.post("/api/projects/{project_id}/geometry/select")
+def geometry_select(project_id: str, request: GeometrySelectRequest):
+    """M1 BRep semantic selection: never infer engineering semantics from mesh.
+
+    A miss is a successful query (``matched: false``) so the UI can clear the
+    semantic panel without treating an empty pick as a transport failure.
+    """
+    _project_or_404(project_id)
+    worker = _kernel_worker_or_none(project_id)
+    if worker is None:
+        raise HTTPException(status_code=409, detail="No alive kernel worker for this project; run the agent first")
+    direction = tuple(request.direction) if request.direction is not None else None
+    try:
+        result = worker.select_topology_at_point(
+            tuple(request.point),
+            direction,
+            tolerance_mm=request.tolerance_mm,
+        )
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(status_code=502, detail=f"kernel topology query failed: {exc}") from exc
+    selection = result.get("selection")
+    return {
+        "ok": True,
+        "part_name": request.part_name,
+        "matched": bool(selection),
+        "selection": selection,
+        "reason": result.get("reason"),
+        "source": selection.get("source") if isinstance(selection, dict) else None,
+    }
+
+
+@app.post("/api/projects/{project_id}/geometry/topology/{topology_id}")
+def geometry_topology(project_id: str, topology_id: str):
+    """Reverse lookup for a semantic topology ID in the live BRep.
+
+    A stale ID after a rebuild is a successful miss (``matched: false``), not a
+    transport failure.  The geometry revision is returned so callers can detect
+    that a previously selected ID belongs to an older model state.
+    """
+    _project_or_404(project_id)
+    worker = _kernel_worker_or_none(project_id)
+    if worker is None:
+        raise HTTPException(status_code=409, detail="No alive kernel worker for this project; run the agent first")
+    try:
+        result = worker.query_topology(topology_id)
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(status_code=502, detail=f"kernel topology query failed: {exc}") from exc
+    selection = result.get("selection")
+    return {
+        "ok": True,
+        "matched": bool(selection),
+        "selection": selection,
+        "reason": result.get("reason"),
+        "geometry_revision": result.get("geometry_revision"),
+        "source": selection.get("source") if isinstance(selection, dict) else None,
+    }
+
+
+@app.post("/api/projects/{project_id}/geometry/measure")
+def geometry_measure(project_id: str, request: GeometryMeasureRequest):
+    """Measure semantic BRep topology references in the kernel.
+
+    The result is authoritative OCC geometry (diameter or minimum distance), not
+    a distance inferred from the rendered STL mesh.
+    """
+    _project_or_404(project_id)
+    worker = _kernel_worker_or_none(project_id)
+    if worker is None:
+        raise HTTPException(status_code=409, detail="No alive kernel worker for this project; run the agent first")
+    try:
+        result = worker.measure_topology(request.topology_ids)
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(status_code=502, detail=f"kernel topology measurement failed: {exc}") from exc
+    measurement = result.get("measurement")
+    return {
+        "ok": True,
+        "matched": bool(measurement),
+        "measurement": measurement,
+        "reason": result.get("reason"),
+        "geometry_revision": result.get("geometry_revision"),
+        "source": measurement.get("source") if isinstance(measurement, dict) else None,
+    }
 
 
 @app.post("/api/projects/{project_id}/kernel/update_feature")

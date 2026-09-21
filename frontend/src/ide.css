@@ -417,6 +417,77 @@
   background: rgba(8, 20, 38, 0.92);
 }
 
+.chat-bubble.chat-bubble-error {
+  border-color: rgba(255, 107, 94, 0.45);
+  background: rgba(45, 18, 22, 0.92);
+  color: #ffc4bf;
+}
+
+.chat-thinking {
+  color: var(--ink-soft);
+  font-style: italic;
+  font-size: 11.5px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.chat-action-btn {
+  align-self: flex-start;
+  margin-top: 4px;
+  padding: 4px 10px;
+  border: 1px solid var(--jade);
+  border-radius: 6px;
+  background: rgba(56, 195, 232, 0.12);
+  color: var(--jade);
+  font-size: 11.5px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.chat-action-btn:hover {
+  background: rgba(56, 195, 232, 0.25);
+  color: #fff;
+  border-color: #63d6f7;
+}
+
+.chat-unconfigured-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 6px 12px;
+  background: rgba(214, 158, 62, 0.12);
+  border: 1px solid rgba(214, 158, 62, 0.35);
+  border-radius: 6px;
+  color: #e8c98a;
+  font-size: 11.5px;
+  cursor: pointer;
+  user-select: none;
+  transition: background 0.15s ease;
+}
+
+.chat-unconfigured-bar:hover {
+  background: rgba(214, 158, 62, 0.2);
+}
+
+.chat-unconfigured-link {
+  padding: 2px 8px;
+  border: 1px solid rgba(214, 158, 62, 0.5);
+  border-radius: 4px;
+  background: rgba(214, 158, 62, 0.2);
+  color: #ffd88a;
+  font-size: 11px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.chat-unconfigured-link:hover {
+  background: rgba(214, 158, 62, 0.35);
+  color: #fff;
+}
+
 /* Preserve the blank line the store inserts between an agent round's prose and
    the next round, so successive messages don't run together. */
 .chat-text {
@@ -606,59 +677,7 @@
   pointer-events: none;
 }
 
-.view-cube {
-  position: absolute;
-  z-index: 3;
-  top: 54px;
-  right: 12px;
-  display: grid;
-  gap: 2px;
-  width: 86px;
-  padding: 4px;
-  border: 1px solid var(--line);
-  border-radius: 6px;
-  background: rgba(10, 22, 42, 0.84);
-  box-shadow: 0 8px 20px rgba(120, 180, 215, 0.1);
-}
-
-.view-cube button {
-  min-height: 24px;
-  padding: 0 4px;
-  border: 0;
-  border-radius: 4px;
-  color: var(--ink);
-  background: rgba(26, 48, 76, 0.7);
-  font-size: 11px;
-}
-
-.view-cube button:hover {
-  background: rgba(56, 195, 232, 0.2);
-}
-
-.cube-face-row {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 2px;
-}
-
-.viewport-axes {
-  position: absolute;
-  z-index: 3;
-  left: 12px;
-  bottom: 48px;
-  display: flex;
-  gap: 5px;
-  padding: 4px 8px;
-  border: 1px solid var(--line);
-  border-radius: 6px;
-  background: rgba(10, 22, 42, 0.76);
-  font-family: "Cascadia Mono", "Consolas", monospace;
-  font-size: 11px;
-}
-
-.viewport-axes .axis-x { color: #a33428; }
-.viewport-axes .axis-y { color: #587b72; }
-.viewport-axes .axis-z { color: #5477a3; }
+/* ViewHelper（three）自绘在画布右上角，无需 HTML 占位 */
 
 .viewport-status {
   position: absolute;
@@ -812,6 +831,117 @@
 }
 .viewport-visual-chip button:hover {
   background: rgba(56, 195, 232, 0.24);
+}
+
+/* 选中/干涉读条（视口左下，紧贴剖切控件之上） */
+.viewport-selection-chip {
+  position: absolute;
+  z-index: 4;
+  left: 12px;
+  bottom: 96px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  align-items: flex-start;
+  max-width: 60%;
+  pointer-events: none;
+}
+.viewport-selection-chip > span {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 100%;
+  padding: 4px 6px 4px 10px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: rgba(10, 22, 42, 0.86);
+  font-size: 11px;
+  backdrop-filter: blur(6px);
+}
+.vsc-selected {
+  color: var(--jade);
+  pointer-events: auto;
+}
+.vsc-selected > button {
+  padding: 0 4px;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--ink-soft);
+  font-size: 13px;
+  line-height: 1;
+  cursor: pointer;
+}
+.vsc-selected > button:hover {
+  color: var(--ink);
+}
+.vsc-interference {
+  color: #e8a08d;
+  border-color: rgba(196, 71, 46, 0.45) !important;
+  background: rgba(58, 24, 16, 0.86) !important;
+}
+
+
+.viewport-progress {
+  position: absolute;
+  z-index: 4;
+  top: 86px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 5px 12px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: rgba(10, 22, 42, 0.86);
+  color: var(--ink-soft);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  pointer-events: none;
+  backdrop-filter: blur(6px);
+}
+.viewport-progress-bar {
+  display: block;
+  width: 84px;
+  height: 3px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: rgba(120, 180, 215, 0.2);
+}
+.viewport-progress-bar i {
+  display: block;
+  height: 100%;
+  border-radius: 999px;
+  background: var(--jade);
+  transition: width 120ms linear;
+}
+
+/* 部分零件加载失败：其余照常显示，这里只报数（不整场清空） */
+.viewport-notice {
+  position: absolute;
+  z-index: 4;
+  top: 118px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  max-width: 70%;
+  padding: 5px 12px;
+  border: 1px solid rgba(214, 158, 62, 0.42);
+  border-radius: 999px;
+  background: rgba(58, 42, 16, 0.86);
+  color: #e8c98a;
+  font-size: 11px;
+  backdrop-filter: blur(6px);
+}
+.viewport-notice-detail {
+  overflow: hidden;
+  max-width: 240px;
+  color: rgba(232, 201, 138, 0.72);
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 /* ===== Startup screen ===== */
@@ -2621,3 +2751,121 @@
 /* This footer is a status readout, so it must not cover the structure drawer. */
 .workspace-shell ~ .bottom-statusbar,
 .ide-shell > .bottom-statusbar { position: static; transform: none; left: auto; bottom: auto; z-index: auto; flex: none; align-self: center; margin: 6px 0; }
+.viewport-measure-badge {
+  position: absolute;
+  bottom: 16px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgba(20, 26, 35, 0.88);
+  border: 1px solid #ffcc00;
+  color: #ffcc00;
+  padding: 6px 14px;
+  border-radius: 6px;
+  font-size: 13px;
+  font-family: monospace;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  z-index: 10;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+  pointer-events: auto;
+}
+
+.measure-clear-btn {
+  background: rgba(255, 204, 0, 0.2);
+  border: 1px solid #ffcc00;
+  color: #fff;
+  cursor: pointer;
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: 11px;
+}
+
+.measure-clear-btn:hover {
+  background: rgba(255, 204, 0, 0.4);
+}
+
+/* M1 BRep 语义选择：只展示内核真值，不把 STL 网格猜测结果伪装成工程语义。 */
+.viewport-semantic-hint,
+.viewport-semantic-panel {
+  position: absolute;
+  z-index: 6;
+  right: 12px;
+  top: 62px;
+  max-width: min(320px, calc(100% - 24px));
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: rgba(10, 22, 42, 0.92);
+  color: var(--ink-soft);
+  font-size: 11px;
+  backdrop-filter: blur(6px);
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.28);
+}
+.viewport-semantic-hint {
+  padding: 6px 10px;
+  pointer-events: none;
+}
+.viewport-semantic-panel {
+  padding: 9px 10px;
+}
+.viewport-semantic-panel.loading {
+  color: var(--jade);
+}
+.viewport-semantic-panel.error {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  border-color: rgba(196, 71, 46, 0.55);
+  color: #eeaaa0;
+}
+.viewport-semantic-panel header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 7px;
+  color: var(--ink);
+  font-size: 12px;
+}
+.viewport-semantic-panel header button,
+.viewport-semantic-panel.error button {
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  font-size: 11px;
+  line-height: 1.4;
+}
+.viewport-semantic-panel header button {
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  border-radius: 50%;
+}
+.viewport-semantic-panel header button:hover,
+.viewport-semantic-panel.error button:hover {
+  background: rgba(56, 195, 232, 0.16);
+}
+.viewport-semantic-panel dl {
+  display: grid;
+  gap: 5px;
+  margin: 0;
+}
+.viewport-semantic-panel dl > div {
+  display: grid;
+  grid-template-columns: 76px minmax(0, 1fr);
+  gap: 8px;
+  align-items: baseline;
+}
+.viewport-semantic-panel dt {
+  color: var(--ink-faint);
+}
+.viewport-semantic-panel dd {
+  min-width: 0;
+  margin: 0;
+  overflow-wrap: anywhere;
+  font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+  color: var(--ink-soft);
+}

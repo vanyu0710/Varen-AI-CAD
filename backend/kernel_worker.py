@@ -248,6 +248,29 @@ class KernelWorkerClient:
     def feature_tree(self) -> dict:
         return self.request_ok("feature_tree")
 
+
+    def select_topology_at_point(
+        self,
+        point: tuple[float, float, float],
+        direction: tuple[float, float, float] | None = None,
+        *,
+        tolerance_mm: float = 0.2,
+    ) -> dict:
+        """Resolve a rendered mesh hit to semantic BRep face data (M1)."""
+        return self.request_ok("select_topology_at_point", {
+            "point": list(point),
+            "direction": list(direction) if direction is not None else None,
+            "tolerance_mm": tolerance_mm,
+        })
+
+    def measure_topology(self, topology_ids: list[str]) -> dict:
+        """Measure one/two semantic topology IDs with authoritative BRep geometry."""
+        return self.request_ok("measure_topology", {"topology_ids": topology_ids})
+
+    def query_topology(self, topology_id: str) -> dict:
+        """Resolve a semantic face/edge/vertex ID against the current BRep."""
+        return self.request_ok("query_topology", {"id": topology_id})
+
     def update_feature(self, feature_id: str, new_params: dict[str, Any], *, timeout: float | None = None) -> dict:
         """参数化更新：改特征参数 → 内核全量重放 → 几何刷新。返回 StepResult。"""
         return self.request_ok("update_feature", {"feature_id": feature_id, "new_params": new_params}, timeout=timeout)

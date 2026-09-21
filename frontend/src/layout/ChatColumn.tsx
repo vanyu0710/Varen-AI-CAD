@@ -23,6 +23,8 @@ type Props = {
   onSendChat: () => void;
   onImageChange: (file: File | null) => void;
   inputRef?: RefObject<HTMLTextAreaElement>;
+  onOpenSettings?: () => void;
+  isPlannerConfigured?: boolean;
 };
 
 /** 步骤按零件分组（保留原顺序；无 part 归入"通用"组，part 为空串）。 */
@@ -58,6 +60,8 @@ export default function ChatColumn({
   onSendChat,
   onImageChange,
   inputRef,
+  onOpenSettings,
+  isPlannerConfigured = true,
 }: Props) {
   const t = useT();
   const agentRunning = useAppStore((state) => state.agentRunning);
@@ -154,8 +158,9 @@ export default function ChatColumn({
                 <span className="chat-text">{entry.text}</span>
               </div>
             ) : (
-              <div className="chat-bubble assistant">
+              <div className={`chat-bubble assistant${entry.error ? " chat-bubble-error" : ""}`}>
                 {entry.text && <span className="chat-text">{entry.text}</span>}
+                {entry.status === "streaming" && !entry.text && entry.tools.length === 0 && <span className="chat-thinking">{t("task.chat.thinking")}</span>}
                 {entry.status === "streaming" && <span className="chat-caret" aria-hidden="true" />}
                 {entry.tools.map((card, index) => (
                   <div
@@ -174,6 +179,11 @@ export default function ChatColumn({
                     <img className="chat-snapshot" src={apiRoot + url} alt={t("task.chat.snapshot")} loading="lazy" />
                   </a>
                 ))}
+                {entry.action?.type === "open_settings" && onOpenSettings && (
+                  <button type="button" className="chat-action-btn" onClick={onOpenSettings}>
+                    {t("task.chat.open_settings")}
+                  </button>
+                )}
               </div>
             )}
           </div>
@@ -191,6 +201,12 @@ export default function ChatColumn({
             <button type="button" className="chat-attach-remove" onClick={() => onImageChange(null)}>
               {t("chat.remove_image")}
             </button>
+          </div>
+        )}
+        {!isPlannerConfigured && (
+          <div className="chat-unconfigured-bar" onClick={onOpenSettings} role="button" tabIndex={0}>
+            <span>{t("task.chat.unconfigured_warning")}</span>
+            {onOpenSettings && <button type="button" className="chat-unconfigured-link">{t("task.chat.open_settings")}</button>}
           </div>
         )}
         <div className="chat-row">

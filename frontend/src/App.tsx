@@ -12,10 +12,12 @@ import {
   generateProject,
   isStaleApprovalError,
   listProjects,
+  measureTopology,
   redo,
   renameProject,
   resolveAgent,
   resolveWsRoot,
+  selectGeometryAtPoint,
   sendAgentMessage,
   stopAgent,
   updateKernelFeature,
@@ -28,7 +30,10 @@ import {
   type PlanStep,
   type ProcessStep,
   type ProjectState,
+  type SemanticPick,
+  type SemanticSelection,
 } from "./api";
+import type { MeasureResult } from "./measureTool";
 import ApprovalPanel from "./ApprovalPanel";
 import ChatColumn from "./layout/ChatColumn";
 import StructurePanel from "./layout/StructurePanel";
@@ -110,6 +115,7 @@ export default function App() {
     setChat,
     appendChatUser,
     appendChatAssistantDelta,
+    appendChatAssistantError,
     attachChatToolCard,
     attachChatSnapshot,
     finalizeChatAssistant,
@@ -120,7 +126,20 @@ export default function App() {
   const language = useAppStore((state) => state.language);
 
   /** 统一发送入口：空闲=开新任务；运行中=插话。首条消息携带草图图片。 */
+  const isPlannerConfigured = Boolean(
+    settings.planner_model && (settings.planner_api_key || settings.planner_base_url)
+  );
+
   const handleSendAgentMessage = async (text: string) => {
+    if (!project?.project_id || !text.trim()) {
+      return;
+    }
+    if (!isPlannerConfigured) {
+      appendChatUser(text.trim());
+      appendChatAssistantError(t("task.chat.model_not_configured"), { type: "open_settings" });
+      setUi({ settingsOpen: true });
+      return;
+    }
     if (!project?.project_id || !text.trim()) {
       return;
     }
@@ -188,6 +207,110 @@ export default function App() {
   // v0.14 F2a：装配预览显隐/选中
   const [assemblyHidden, setAssemblyHidden] = useState<string[]>([]);
   const [assemblySelected, setAssemblySelected] = useState<string | null>(null);
+  // M1 BRep 语义选择：只显示内核返回的工程语义，禁止用 STL 网格猜半径/法向/面积。
+  const [semanticSelection, setSemanticSelection] = useState<SemanticSelection | null>(null);
+  const [semanticSelectionLoading, setSemanticSelectionLoading] = useState(false);
+  const [semanticSelectionError, setSemanticSelectionError] = useState<string | null>(null);
+  const semanticPickSeq = useRef(0);
+  // M2 BRep 测量：状态在 App 层，视口只负责拾取与显示证据点。
+  const [measureMode, setMeasureMode] = useState(false);
+  const [measureSelections, setMeasureSelections] = useState<SemanticSelection[]>([]);
+  const [measureResult, setMeasureResult] = useState<MeasureResult | null>(null);
+  const [measureError, setMeasureError] = useState<string | null>(null);
+  const measureSelectionsRef = useRef<SemanticSelection[]>([]);
+  const measureModeRef = useRef(false);
+  measureModeRef.current = measureMode;
+
+  const clearMeasure = () => {
+    measureSelectionsRef.current = [];
+    setMeasureSelections([]);
+    setMeasureResult(null);
+    setMeasureError(null);
+  };
+
+  const clearSemanticSelection = () => {
+    semanticPickSeq.current += 1;
+    setSemanticSelection(null);
+    setSemanticSelectionLoading(false);
+    setSemanticSelectionError(null);
+    clearMeasure();
+  };
+
+  const runBRepMeasure = async (selections: SemanticSelection[]) => {
+    if (!project?.project_id || selections.length === 0) {
+      return;
+    }
+    setMeasureError(null);
+    setMeasureResult(null);
+    try {
+      const response = await measureTopology(
+        project.project_id,
+        selections.map((selection) => selection.topology.id),
+      );
+      if (!response.matched || !response.measurement) {
+        setMeasureError(t("viewport.measure.stale"));
+        return;
+      }
+      const measurement = response.measurement;
+      setMeasureResult({
+        ...measurement.result,
+        metric: measurement.metric,
+      });
+    } catch (err: unknown) {
+      setMeasureError(t("viewport.measure.error", { err: String(err) }));
+    }
+  };
+
+  const handleSemanticPick = (pick: SemanticPick) => {
+    if (!project?.project_id) {
+      return;
+    }
+    const requestId = ++semanticPickSeq.current;
+    setSemanticSelectionLoading(true);
+    setSemanticSelectionError(null);
+    setSemanticSelection(null);
+    selectGeometryAtPoint(project.project_id, pick)
+      .then((response) => {
+        if (requestId !== semanticPickSeq.current) {
+          return;
+        }
+        setSemanticSelectionLoading(false);
+        if (!response.matched || !response.selection) {
+          setSemanticSelectionError(t("viewport.semantic.miss"));
+          return;
+        }
+        setSemanticSelection(response.selection);
+        // Keep the feature tree synchronized with the authoritative BRep owner.
+        // This is the first half of topology ↔ feature-tree linkage; the next
+        // half will highlight all topology produced by a selected feature.
+        if (response.selection.feature_id) {
+          setSelectedFeatureId(response.selection.feature_id);
+        }
+        if (measureModeRef.current) {
+          const current = measureSelectionsRef.current;
+          const next = current.length >= 2 ? [response.selection] : [...current, response.selection];
+          measureSelectionsRef.current = next;
+          setMeasureSelections(next);
+          setMeasureResult(null);
+          setMeasureError(null);
+          if (next.length === 2) {
+            void runBRepMeasure(next);
+          } else {
+            const geometryKind = response.selection.geometry.kind;
+            if (geometryKind === "cylinder" || geometryKind === "circle") {
+              void runBRepMeasure(next);
+            }
+          }
+        }
+      })
+      .catch((err: unknown) => {
+        if (requestId !== semanticPickSeq.current) {
+          return;
+        }
+        setSemanticSelectionLoading(false);
+        setSemanticSelectionError(t("viewport.semantic.error", { err: String(err) }));
+      });
+  };
 
   const refreshKernelTree = async () => {
     if (!project?.project_id) {
@@ -201,10 +324,6 @@ export default function App() {
     }
   };
 
-  useEffect(() => {
-    void refreshKernelTree();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [project?.project_id]);
 
   const kernelNodes = kernelTree.graph?.nodes ?? {};
 
@@ -270,6 +389,8 @@ export default function App() {
     setAssemblySelected(null);
     setError("");
   };
+
+    clearSemanticSelection();
 
   const handleNewProject = async () => {
     // 已有未提交工作（会话或特征）时先确认，避免误清当前项目
@@ -465,14 +586,22 @@ export default function App() {
       }
       if (event.type === "agent_done") {
         setAgentRunning(false);
+        setPendingApprovals([]);
+        if (event.payload?.ok === false) {
+          const errMsg = event.message || event.payload?.error || "Agent execution failed";
+          const act = event.payload?.error === "model_not_configured" ? { type: "open_settings" as const } : undefined;
+          appendChatAssistantError(errMsg, act);
+        }
+        finalizeChatAssistant();
+        setAgentRunning(false);
         // v0.22：run 已结束，未答复的审批卡片随之失效（后端已 cancel_all），清掉防止
         // 用户点进 409 “No running agent” 死循环。
-        setPendingApprovals([]);
+
         // Do NOT clear liveMesh here: the committed artifact set is fetched
         // asynchronously below, and clearing now would blank the viewport at
         // exactly the moment the finished model should be visible. The viewport
         // switches to the committed run once it arrives (see viewRunId).
-        finalizeChatAssistant();
+
         void (async () => {
           try {
             const next = await fetchProject(project.project_id);
@@ -541,10 +670,34 @@ export default function App() {
   // live mesh the loop just exported; once the run commits, that takes over.
   const liveActive = Boolean(liveMesh) && (agentRunning || !runId);
   const viewRunId = liveActive ? liveMesh!.runId : runId;
+
+  useEffect(() => {
+    clearSemanticSelection();
+    // A selected face belongs to one geometry revision; never carry it across a
+    // rebuild. `liveMesh.rev` also invalidates it during step-by-step previews.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [project?.project_id, viewRunId, liveMesh?.rev]);
   // agent 路径只产出 stl/step（无 obj）；hasModel 只看 stl
   const hasModel = Boolean(project?.current.artifacts.stl) || liveActive;
   // v0.14 F2a：装配预览——export 过装配且零件带库 STL 时，视口切多件叠加
   const assembly = project?.current.artifacts.assembly ?? null;
+  // 干涉件名集合：把「硬碰撞 N」这个计数落到具体零件上（视口告警色 + 面板可点选）
+  const interferingParts = useMemo(() => {
+    const pairs = assembly?.pairs || [];
+    const names = new Set<string>();
+    for (const pair of pairs) {
+      if (!pair.interfering) {
+        continue;
+      }
+      if (pair.name_a) {
+        names.add(pair.name_a);
+      }
+      if (pair.name_b) {
+        names.add(pair.name_b);
+      }
+    }
+    return Array.from(names);
+  }, [assembly]);
   const assemblyModels: AssemblyModel[] | undefined = useMemo(() => {
     if (!assembly || !project) {
       return undefined;
@@ -782,6 +935,28 @@ export default function App() {
             models={assemblyModels}
             hidden={assemblyHidden}
             selected={assemblySelected}
+            onHiddenChange={setAssemblyHidden}
+            onSelectChange={setAssemblySelected}
+            interfering={interferingParts}
+            semanticPickEnabled={hasModel && !assemblyModels}
+            onSemanticPick={handleSemanticPick}
+            semanticSelection={semanticSelection}
+            semanticSelectionLoading={semanticSelectionLoading}
+            semanticSelectionError={semanticSelectionError}
+            onSemanticSelectionClear={clearSemanticSelection}
+            measureMode={measureMode}
+            onMeasureModeChange={(enabled) => {
+              setMeasureMode(enabled);
+              if (!enabled) {
+                clearMeasure();
+              }
+            }}
+            measureResult={measureResult}
+            measureSelectionCount={measureSelections.length}
+            measureError={measureError}
+            onMeasureClear={clearMeasure}
+            // 换项目才重新适配视角；同一项目内的几何更新保留用户当前视角
+            fitKey={project.project_id}
             breadcrumb={t("app.breadcrumb", {
               partFamily: plan?.part_family || "FeaturePlan",
               feature: selectedFeature?.id || t("app.breadcrumb.none"),
@@ -820,6 +995,21 @@ export default function App() {
                 )}
               </div>
               <AssemblyCheckSummary assembly={assembly} />
+              {interferingParts.length > 0 && (
+                <div className="assembly-interference-list" data-testid="assembly-interference">
+                  <span className="eyebrow">{t("app.assembly.interference_title")}</span>
+                  {interferingParts.map((name) => (
+                    <button
+                      key={name}
+                      type="button"
+                      className={`assembly-interference-part${assemblySelected === name ? " selected" : ""}`}
+                      onClick={() => setAssemblySelected((current) => (current === name ? null : name))}
+                    >
+                      {name}
+                    </button>
+                  ))}
+                </div>
+              )}
               <div className="assembly-view-actions">
                 <span>{t("app.assembly.selected", { name: assemblySelected || "—" })}</span>
                 <button type="button" disabled={!assemblySelected || !assemblyModels?.some((m) => m.name === assemblySelected)}
@@ -903,6 +1093,8 @@ export default function App() {
           onClarificationContinue={(answers) => void onClarificationContinue(answers)}
           onChatMessageChange={setChatMessage}
           onSendChat={() => void onChat()}
+          onOpenSettings={() => setUi({ settingsOpen: true })}
+          isPlannerConfigured={isPlannerConfigured}
           onImageChange={setImageFile}
           inputRef={chatInputRef}
         />

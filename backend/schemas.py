@@ -920,6 +920,21 @@ class AgentResolveRequest(BaseModel):
     args_override: dict[str, Any] | None = None
 
 
+class GeometrySelectRequest(BaseModel):
+    """M1 semantic pick: mesh hit point/ray is resolved against the live BRep."""
+
+    point: list[float] = Field(min_length=3, max_length=3)
+    direction: list[float] | None = Field(default=None, min_length=3, max_length=3)
+    tolerance_mm: float = Field(default=0.2, gt=0.0, le=20.0)
+    part_name: str | None = None
+
+
+class GeometryMeasureRequest(BaseModel):
+    """M2 BRep measurement input: one ID for diameter, two IDs for distance."""
+
+    topology_ids: list[str] = Field(min_length=1, max_length=2)
+
+
 class KernelUpdateFeatureRequest(BaseModel):
     """kernel 参数化更新：改特征参数 → 内核全量重放。"""
 

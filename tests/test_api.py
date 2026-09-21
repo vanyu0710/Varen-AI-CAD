@@ -71,6 +71,138 @@ class MechCADApiTests(unittest.TestCase):
         self.assertEqual(fetched.status_code, 200)
         self.assertEqual(fetched.json()["name"], "API test")
 
+    def test_geometry_select_uses_live_kernel_brep(self) -> None:
+        project_id = self._create_project()
+        selection = {
+            "topology": {"type": "face", "id": "face_0001", "kind": "plane", "fingerprint": "sha256:test"},
+            "geometry": {"kind": "plane", "origin": [0, 0, 5], "normal": [0, 0, 1], "area_mm2": 200.0},
+            "hit": {"point_mm": [0, 0, 5], "distance_to_face_mm": 0.0},
+            "feature_id": "F_0001",
+            "display": {
+                "type": "triangles",
+                "vertices": [[0, 0, 5], [10, 0, 5], [10, 10, 5], [0, 10, 5]],
+                "indices": [0, 1, 2, 0, 2, 3],
+                "triangle_count": 2,
+                "source": "brep",
+            },
+            "source": "brep",
+            "units": "mm",
+            "accuracy": 0.001,
+        }
+
+        class FakeWorker:
+            def select_topology_at_point(self, point, direction=None, *, tolerance_mm=0.2):
+                self.point = point
+                self.direction = direction
+                self.tolerance_mm = tolerance_mm
+                return {"selection": selection, "matched": True, "reason": None}
+
+        worker = FakeWorker()
+        with patch.object(main_module, "_kernel_worker_or_none", return_value=worker):
+            response = self.client.post(
+                f"/api/projects/{project_id}/geometry/select",
+                json={"point": [0, 0, 5], "direction": [0, 0, -1], "part_name": "part_01"},
+            )
+        self.assertEqual(response.status_code, 200, response.text)
+        body = response.json()
+        self.assertTrue(body["ok"])
+        self.assertEqual(body["source"], "brep")
+        self.assertEqual(body["selection"], selection)
+        self.assertEqual(worker.point, (0.0, 0.0, 5.0))
+        self.assertEqual(worker.direction, (0.0, 0.0, -1.0))
+        self.assertEqual(worker.tolerance_mm, 0.2)
+
+    def test_geometry_topology_reverse_lookup_uses_live_kernel_brep(self) -> None:
+        project_id = self._create_project()
+        topology_id = "edge:sha256:test"
+        selection = {
+            "topology": {"type": "edge", "id": topology_id, "kind": "circle", "fingerprint": "sha256:test"},
+            "geometry": {"kind": "circle", "center": [0, 0, 10], "radius_mm": 5.0},
+            "hit": None,
+            "geometry_revision": 12,
+            "feature_id": "F_0001",
+            "display": {
+                "type": "polyline",
+                "vertices": [[5, 0, 10], [0, 5, 10]],
+                "source": "brep",
+            },
+            "source": "brep",
+            "units": "mm",
+            "accuracy": 0.001,
+        }
+
+        class FakeWorker:
+            def query_topology(self, requested_id):
+                self.requested_id = requested_id
+                return {"selection": selection, "matched": True, "reason": None, "geometry_revision": 12}
+
+        worker = FakeWorker()
+        with patch.object(main_module, "_kernel_worker_or_none", return_value=worker):
+            response = self.client.post(
+                f"/api/projects/{project_id}/geometry/topology/{topology_id}"
+            )
+        self.assertEqual(response.status_code, 200, response.text)
+        body = response.json()
+        self.assertTrue(body["ok"])
+        self.assertTrue(body["matched"])
+        self.assertEqual(body["selection"], selection)
+        self.assertEqual(body["geometry_revision"], 12)
+        self.assertEqual(body["source"], "brep")
+        self.assertEqual(worker.requested_id, topology_id)
+
+    def test_geometry_topology_stale_id_is_structured_miss(self) -> None:
+        project_id = self._create_project()
+
+        class FakeWorker:
+            def query_topology(self, topology_id):
+                return {"selection": None, "matched": False, "reason": "topology_not_found", "geometry_revision": 13}
+
+        with patch.object(main_module, "_kernel_worker_or_none", return_value=FakeWorker()):
+            response = self.client.post(
+                f"/api/projects/{project_id}/geometry/topology/face%3Asha256%3Aold"
+            )
+        self.assertEqual(response.status_code, 200, response.text)
+        body = response.json()
+        self.assertTrue(body["ok"])
+        self.assertFalse(body["matched"])
+        self.assertIsNone(body["selection"])
+        self.assertEqual(body["reason"], "topology_not_found")
+        self.assertEqual(body["geometry_revision"], 13)
+        self.assertIsNone(body["source"])
+
+    def test_geometry_measure_uses_live_kernel_brep(self) -> None:
+        project_id = self._create_project()
+        measurement = {
+            "topology_ids": ["edge:sha256:test"],
+            "metric": "diameter",
+            "result": {"p1": [-5, 0, 10], "p2": [5, 0, 10], "distance": 10.0, "dx": 10.0, "dy": 0.0, "dz": 0.0},
+            "algorithm": "occ_analytic_brep",
+            "source": "brep",
+            "units": "mm",
+            "accuracy": 0.001,
+            "geometry_revision": 12,
+        }
+
+        class FakeWorker:
+            def measure_topology(self, topology_ids):
+                self.topology_ids = topology_ids
+                return {"measurement": measurement, "matched": True, "reason": None, "geometry_revision": 12}
+
+        worker = FakeWorker()
+        with patch.object(main_module, "_kernel_worker_or_none", return_value=worker):
+            response = self.client.post(
+                f"/api/projects/{project_id}/geometry/measure",
+                json={"topology_ids": ["edge:sha256:test"]},
+            )
+        self.assertEqual(response.status_code, 200, response.text)
+        body = response.json()
+        self.assertTrue(body["ok"])
+        self.assertTrue(body["matched"])
+        self.assertEqual(body["measurement"], measurement)
+        self.assertEqual(body["source"], "brep")
+        self.assertEqual(body["geometry_revision"], 12)
+        self.assertEqual(worker.topology_ids, ["edge:sha256:test"])
+
     def test_model_test_reports_missing_config_without_key_leak(self) -> None:
         with patch.dict(
             "os.environ",

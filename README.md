@@ -9,7 +9,8 @@
 > 并保留参数化特征历史、精确 BRep 几何与可重放历史——碰撞与契约不过关就不交付。
 
 <p align="center">
-  <b><a href="https://github.com/vanyu0710/aicad/releases/tag/v0.21.0-beta">⬇️ 下载 v0.21.0-beta（Windows）</a></b> &nbsp;·&nbsp;
+  <b><a href="https://github.com/vanyu0710/aicad/releases/tag/v0.22.0-beta">⬇️ 下载 v0.22.0-beta（Windows）</a></b> &nbsp;·&nbsp;
+  <a href="README.en.md">English README</a> &nbsp;·&nbsp;
   <b><a href="https://vanyu0710.github.io/aicad/">🌊 产品落地页</a></b> &nbsp;·&nbsp;
   <a href="docs/beta.md">申请成为设计伙伴</a> &nbsp;·&nbsp;
   <a href="https://github.com/vanyu0710/aicad/issues/new?template=task_failure.yml">📮 报告任务失败</a> &nbsp;·&nbsp;
@@ -38,7 +39,7 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/vanyu0710/aicad/releases/tag/v0.21.0-beta"><img alt="Release" src="https://img.shields.io/badge/release-v0.21.0--beta-orange?logo=github" /></a>
+  <a href="https://github.com/vanyu0710/aicad/releases/tag/v0.22.0-beta"><img alt="Release" src="https://img.shields.io/badge/release-v0.21.0--beta-orange?logo=github" /></a>
   <img alt="Status" src="https://img.shields.io/badge/status-closed%20beta-blue" />
   <img alt="Python" src="https://img.shields.io/badge/python-3.12-blue" />
   <img alt="Tests" src="https://img.shields.io/badge/tests-473%20backend%20%2B%2094%20frontend-brightgreen" />
@@ -51,9 +52,19 @@
 > 均为 **AGPL-3.0-or-later**。社区使用与贡献按 AGPL；闭源分发 / OEM 集成需商业许可（双许可策略见
 > [docs/license-strategy.md](docs/license-strategy.md)）。
 >
-> 🚧 **状态**：v0.21.0-beta 封闭测试中——正在招募设计伙伴（见
+> 🚧 **状态**：v0.22.0-beta 封闭测试中——正在招募设计伙伴（见
 > [docs/beta.md](docs/beta.md)）。本产品的交付物是**可验证、可编辑的参数化装配原型**，
 > 用于概念设计与快速原型；`production_ready` 恒为 false，未经工程师复核不得直接投产。
+
+### 先看这三件事
+
+- **能做什么**：从自然语言任务出发，规划 BOM，逐件生成参数化 B-Rep 几何，导出 STEP，并用几何契约与干涉检查阻止明显错误的装配交付。
+- **不能做什么**：它不是 SolidWorks 替代品，也不承诺工程图、钣金、螺纹、曲面、装配配合求解或直接投产；当前仍是 Windows 封闭 Beta。
+- **怎么参与**：不需要先写代码。可以提交一个真实但已脱敏的机械任务、复现一个失败，或审查 STEP 下游兼容性；入口统一在 [Discussions](https://github.com/vanyu0710/aicad/discussions) 和 [Issue 模板](https://github.com/vanyu0710/aicad/issues/new/choose)。
+
+> **给第一次到访的人**：如果你只想判断项目是否值得试，先看上面的减速器/变速器证据，再按 [3 分钟快速开始](docs/GETTING_STARTED.md) 运行一个最小法兰任务。仓库根目录 `VERSION` 是当前公开安装包版本；开发分支可能包含尚未发布的改动。
+
+当前公开版、开发分支和下一次发布的区别见 [项目状态](docs/PROJECT_STATUS.md)。
 
 ---
 
@@ -120,8 +131,8 @@ Varen CAD 把 **MechKernel 参数化 CAD 内核**（真实 OCC 7.9.3 几何）�
 
 ### 🚀 最快路径：下载 Beta 安装包（推荐，无需 Python）
 
-1. 下载 **[VarenCAD-win64-0.21.0-beta.zip](https://github.com/vanyu0710/aicad/releases/tag/v0.21.0-beta)**（≈180 MB），
-   与同页 `.sha256` 附件核对校验值：`Get-FileHash .\VarenCAD-win64-0.21.0-beta.zip -Algorithm SHA256`
+1. 下载 **[VarenCAD-win64-0.22.0-beta.zip](https://github.com/vanyu0710/aicad/releases/tag/v0.22.0-beta)**（≈180 MB），
+   与同页 `.sha256` 附件核对校验值：`Get-FileHash .\VarenCAD-win64-0.22.0-beta.zip -Algorithm SHA256`
 2. 解压后双击 `VarenCAD.exe`（SmartScreen"未知发布者"属预期，未签名；说明见安装指引）。
 3. 设置中心 → 模型：配一个 OpenAI 兼容端点（设计伙伴可申请限额试用端点），
    然后输入"做一块 120×120×12 法兰，中心 Ø30 通孔，6 个 Ø8 螺栓孔在 Ø90 圆上"。

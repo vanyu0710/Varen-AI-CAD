@@ -1,11 +1,12 @@
-# Varen CAD — an auditable, local-first AI agent for parametric mechanical assemblies
+# Varen CAD — from a one-line brief to a reviewable mechanical assembly
 
 <p align="center">
   <img src="https://raw.githubusercontent.com/vanyu0710/Varen-AI-CAD/main/assets/varen-cad-logo.svg" alt="Varen CAD logo" width="300"/>
 </p>
 
 <p align="center">
-  <b>From natural language to BOM, verified B-Rep parts, and assembly STEP.</b>
+  <b>A mechanical-design agent that works like an engineer:</b> research and calculations, structured questions, a BOM plan awaiting your approval, then part-by-part modeling, assembly, and STEP export.<br/>
+  <i>Every step is replayable. If geometry or interference checks fail, the result is not delivered as success.</i>
 </p>
 
 <p align="center">

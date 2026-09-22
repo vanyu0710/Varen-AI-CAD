@@ -1,12 +1,12 @@
-# Varen CAD —— 可审计、本地优先的参数化机械装配 AI Agent
+# Varen CAD —— 从一句话到一套可复核的机械装配
 
 <p align="center">
   <img src="https://raw.githubusercontent.com/vanyu0710/Varen-AI-CAD/main/assets/varen-cad-logo.svg" alt="Varen CAD logo" width="300"/>
 </p>
 
 <p align="center">
-  <b>Varen CAD 是一个可审计、本地优先的参数化机械装配 AI Agent。</b><br/>
-  <i>从自然语言到 BOM、经过验证的 B-Rep 零件，以及装配 STEP。</i>
+  <b>像工程师一样干活的机械设计 Agent：</b>调研计算、结构化提问、BOM 计划待你批准，再逐件建模、装配、导出 STEP。<br/>
+  <i>每一步可回放；几何与碰撞检查不过关，就不当作成功交付。</i>
 </p>
 
 <p align="center">

@@ -1,11 +1,11 @@
-# Varen CAD — from a one-line brief to a reviewable mechanical assembly
+# Varen CAD — an AI CAD modeling agent: from a one-line brief to a reviewable assembly
 
 <p align="center">
   <img src="https://raw.githubusercontent.com/vanyu0710/Varen-AI-CAD/main/assets/varen-cad-logo.svg" alt="Varen CAD logo" width="300"/>
 </p>
 
 <p align="center">
-  <b>A mechanical-design agent that works like an engineer:</b> research and calculations, structured questions, a BOM plan awaiting your approval, then part-by-part modeling, assembly, and STEP export.<br/>
+  <b>An AI CAD modeling agent:</b> give it a one-line brief and it researches, asks structured questions, proposes a BOM for your approval, then models real CAD geometry part by part — parametric B-Rep, not images or meshes — and exports the assembly as STEP.<br/>
   <i>Every step is replayable. If geometry or interference checks fail, the result is not delivered as success.</i>
 </p>
 

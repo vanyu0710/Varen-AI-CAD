@@ -1,11 +1,11 @@
-# Varen CAD —— 从一句话到一套可复核的机械装配
+# Varen CAD —— AI CAD 建模 Agent：一句话到可复核的机械装配
 
 <p align="center">
   <img src="https://raw.githubusercontent.com/vanyu0710/Varen-AI-CAD/main/assets/varen-cad-logo.svg" alt="Varen CAD logo" width="300"/>
 </p>
 
 <p align="center">
-  <b>像工程师一样干活的机械设计 Agent：</b>调研计算、结构化提问、BOM 计划待你批准，再逐件建模、装配、导出 STEP。<br/>
+  <b>AI CAD 建模 Agent：</b>一句话需求进来，先调研计算、结构化提问、出 BOM 计划待你批准，再逐件完成真实 CAD 建模与装配，导出 STEP——参数化 BRep，不是图片或网格。<br/>
   <i>每一步可回放；几何与碰撞检查不过关，就不当作成功交付。</i>
 </p>
 

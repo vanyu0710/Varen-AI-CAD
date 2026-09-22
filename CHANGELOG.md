@@ -1,3 +1,17 @@
+## v0.22.1-beta - BRep 工程测量与测量稳健性修复 (2026-09-22)
+
+- **工业测量真值链路**：`measure_topology` 以 OCC BRep 为唯一几何真相，支持圆柱面/圆边直径、
+  两个圆柱/圆的轴距、两个平行平面的面距，以及任意两个拓扑的 OCC 最小距离；
+  不再用 STL 网格点距冒充工程尺寸。
+- **可审计结果**：所有测量返回 `metric`、`p1` / `p2` 证据点、算法名、`source=brep`、
+  `units=mm`、`accuracy=0.001` 与 `geometry_revision`；前端分别显示 `Ø`、`A`、`F`、`L`。
+- **稳健性修复**：
+  - 非正交/相交轴的轴距证据点改为真实最近点对，交轴返回真实交点；
+  - 平行轴起点沿轴向错开时，修正垂直偏移与证据点，避免把轴向错位算入轴距；
+  - 修复 vertex 语义反查参数错误，旧拓扑 ID 继续返回结构化 miss；
+  - RPC 输入拒绝 NaN/Infinity 坐标与非法 tolerance，避免异常输入进入 OCC。
+- **质量门禁**：frontend 139、backend 480、kernel 481 全部通过；`compileall` 与前端 production build 通过。
+
 ## v0.22.0-beta - 项目品牌统一为 Varen CAD 与工业视口 BRep 拓扑语义交互 (2026-09-21)
 
 - **品牌统一与工程治理**：

@@ -1,4 +1,4 @@
-Varen CAD 打包版（Windows x64）
+Varen CAD 打包版（Windows x64 · v0.22.1-beta）
 ================================
 
 一、快速开始
@@ -29,4 +29,4 @@ Varen CAD 打包版（Windows x64）
   · 内核为 AGPL-3.0-or-later（mechcad-kernel）：对外分发本程序时，
     需随包提供对应源码或书面源码要约，并保留内核版权声明。
 
-—— 2026-09-15 构建
+—— 2026-09-22 构建

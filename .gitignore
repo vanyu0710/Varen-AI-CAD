@@ -23,6 +23,8 @@ work_ab/
 packaging/release/
 packaging/dist/
 packaging/build/
+build/
+dist/
 # Python 嵌入式运行时（构建输入，可由 python.org embeddable 3.12 重建）
 packaging/runtime/
 node_modules/

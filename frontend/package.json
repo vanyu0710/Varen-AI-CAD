@@ -1,7 +1,7 @@
 {
   "name": "varen-cad-frontend",
   "private": true,
-  "version": "0.22.0-beta",
+  "version": "0.22.1-beta",
   "type": "module",
   "scripts": {
     "dev": "vite --host 127.0.0.1 --port 5173 --strictPort",

@@ -37,10 +37,11 @@ manufacturing use.
 
 ## Quick start
 
-The supported public build is Windows x64. Download the beta archive from
-[Releases](https://github.com/vanyu0710/aicad/releases), verify its SHA256 file,
-extract it, and run `VarenCAD.exe`. Then configure an OpenAI-compatible model
-endpoint in Settings → Model and try:
+The supported public build is Windows x64. Download
+[v0.22.1-beta](https://github.com/vanyu0710/aicad/releases/tag/v0.22.1-beta)
+(`VarenCAD-win64-0.22.1-beta.zip`), verify its SHA256 file, extract it, and run
+`VarenCAD.exe`. Then configure an OpenAI-compatible model endpoint in
+Settings → Model and try:
 
 ```text
 Create a 120 x 120 x 12 mm flange with a 30 mm through hole and six 8 mm holes

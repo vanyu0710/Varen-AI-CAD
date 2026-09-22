@@ -9,7 +9,7 @@
 > 并保留参数化特征历史、精确 BRep 几何与可重放历史——碰撞与契约不过关就不交付。
 
 <p align="center">
-  <b><a href="https://github.com/vanyu0710/aicad/releases/tag/v0.22.0-beta">⬇️ 下载 v0.22.0-beta（Windows）</a></b> &nbsp;·&nbsp;
+  <b><a href="https://github.com/vanyu0710/aicad/releases/tag/v0.22.1-beta">⬇️ 下载 v0.22.1-beta（Windows）</a></b> &nbsp;·&nbsp;
   <a href="README.en.md">English README</a> &nbsp;·&nbsp;
   <b><a href="https://vanyu0710.github.io/aicad/">🌊 产品落地页</a></b> &nbsp;·&nbsp;
   <a href="docs/beta.md">申请成为设计伙伴</a> &nbsp;·&nbsp;
@@ -39,10 +39,10 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/vanyu0710/aicad/releases/tag/v0.22.0-beta"><img alt="Release" src="https://img.shields.io/badge/release-v0.21.0--beta-orange?logo=github" /></a>
+  <a href="https://github.com/vanyu0710/aicad/releases/tag/v0.22.1-beta"><img alt="Release" src="https://img.shields.io/badge/release-v0.22.1--beta-orange?logo=github" /></a>
   <img alt="Status" src="https://img.shields.io/badge/status-closed%20beta-blue" />
   <img alt="Python" src="https://img.shields.io/badge/python-3.12-blue" />
-  <img alt="Tests" src="https://img.shields.io/badge/tests-473%20backend%20%2B%2094%20frontend-brightgreen" />
+  <img alt="Tests" src="https://img.shields.io/badge/tests-480%20backend%20%2B%20139%20frontend%20%2B%20481%20kernel-brightgreen" />
   <img alt="License" src="https://img.shields.io/badge/license-AGPL--3.0--or--later-green" />
   <img alt="UI" src="https://img.shields.io/badge/UI-React%20%2B%20Three.js-61dafb" />
   <img alt="CAD kernel" src="https://img.shields.io/badge/CAD%20kernel-MechKernel%20(Build123d)-green" />
@@ -52,7 +52,7 @@
 > 均为 **AGPL-3.0-or-later**。社区使用与贡献按 AGPL；闭源分发 / OEM 集成需商业许可（双许可策略见
 > [docs/license-strategy.md](docs/license-strategy.md)）。
 >
-> 🚧 **状态**：v0.22.0-beta 封闭测试中——正在招募设计伙伴（见
+> 🚧 **状态**：v0.22.1-beta 封闭测试中——正在招募设计伙伴（见
 > [docs/beta.md](docs/beta.md)）。本产品的交付物是**可验证、可编辑的参数化装配原型**，
 > 用于概念设计与快速原型；`production_ready` 恒为 false，未经工程师复核不得直接投产。
 
@@ -131,8 +131,8 @@ Varen CAD 把 **MechKernel 参数化 CAD 内核**（真实 OCC 7.9.3 几何）�
 
 ### 🚀 最快路径：下载 Beta 安装包（推荐，无需 Python）
 
-1. 下载 **[VarenCAD-win64-0.22.0-beta.zip](https://github.com/vanyu0710/aicad/releases/tag/v0.22.0-beta)**（≈180 MB），
-   与同页 `.sha256` 附件核对校验值：`Get-FileHash .\VarenCAD-win64-0.22.0-beta.zip -Algorithm SHA256`
+1. 下载 **[VarenCAD-win64-0.22.1-beta.zip](https://github.com/vanyu0710/aicad/releases/tag/v0.22.1-beta)**（≈180 MB），
+   与同页 `.sha256` 附件核对校验值：`Get-FileHash .\VarenCAD-win64-0.22.1-beta.zip -Algorithm SHA256`
 2. 解压后双击 `VarenCAD.exe`（SmartScreen"未知发布者"属预期，未签名；说明见安装指引）。
 3. 设置中心 → 模型：配一个 OpenAI 兼容端点（设计伙伴可申请限额试用端点），
    然后输入"做一块 120×120×12 法兰，中心 Ø30 通孔，6 个 Ø8 螺栓孔在 Ø90 圆上"。

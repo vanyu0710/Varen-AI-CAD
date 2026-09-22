@@ -1,426 +1,188 @@
-# Varen CAD —— AI CAD IDE
+# Varen CAD —— 可审计、本地优先的参数化机械装配 AI Agent
 
 <p align="center">
-  <img src="assets/varen-cad-logo.svg" alt="Varen CAD logo" width="300"/>
-</p>
-
-> **会交付证据的机械设计 Agent。** Varen CAD 是一个面向机械工程师的本地 AI 建模 IDE：
-> AI agent 像工程师一样逐步自主建模，你随时看进度、改参数、确认关键决策，
-> 并保留参数化特征历史、精确 BRep 几何与可重放历史——碰撞与契约不过关就不交付。
-
-<p align="center">
-  <b><a href="https://github.com/vanyu0710/aicad/releases/tag/v0.22.0-beta">⬇️ 下载 v0.22.0-beta（Windows）</a></b> &nbsp;·&nbsp;
-  <a href="README.en.md">English README</a> &nbsp;·&nbsp;
-  <b><a href="https://vanyu0710.github.io/aicad/">🌊 产品落地页</a></b> &nbsp;·&nbsp;
-  <a href="docs/beta.md">申请成为设计伙伴</a> &nbsp;·&nbsp;
-  <a href="https://github.com/vanyu0710/aicad/issues/new?template=task_failure.yml">📮 报告任务失败</a> &nbsp;·&nbsp;
-  <a href="https://vanyu0710.github.io/mechcad-kernel/">内核文档</a> &nbsp;·&nbsp;
-  <a href="docs/USER_GUIDE.md">用户指南</a>
+  <img src="https://raw.githubusercontent.com/vanyu0710/Varen-AI-CAD/main/assets/varen-cad-logo.svg" alt="Varen CAD logo" width="300"/>
 </p>
 
 <p align="center">
-  一句话跑出的 1:100 三级齿轮减速器装配（AI agent 自主设计，8 件 / 758s 一次通过）：<br/>
-  <img src="docs/images/varen-gearbox-assembly.png" alt="Varen CAD agent 自主设计的 1:100 三级齿轮减速器装配四视图" width="820"/>
+  <b>Varen CAD 是一个可审计、本地优先的参数化机械装配 AI Agent。</b><br/>
+  <i>从自然语言到 BOM、经过验证的 B-Rep 零件，以及装配 STEP。</i>
 </p>
 
 <p align="center">
-  5 挡手动变速器总成（三轴式 · 真渐开线斜齿 β=15° · 壳体由 Varen CAD 按包络反推生成 + 逐项审计 · 26 件 / 硬碰撞 0）：<br/>
-  <img src="docs/images/varen-transmission-visual.png" alt="5 挡手动变速器总成可视化：装配四视图 + 24 零件缩略图" width="860"/>
+  <b><a href="https://github.com/vanyu0710/Varen-AI-CAD/releases">下载 Windows 版</a></b> ·
+  <a href="README.en.md">English</a> ·
+  <a href="https://vanyu0710.github.io/Varen-AI-CAD/">产品落地页</a> ·
+  <a href="docs/beta.md">申请 Beta</a> ·
+  <a href="https://github.com/vanyu0710/Varen-AI-CAD/issues/new?template=task_failure.yml">报告任务失败</a>
 </p>
 
 <p align="center">
-  1:100 三级减速器运行总览（8 件 / 53 步 / 758s / 硬碰撞 0）：<br/>
-  <img src="docs/images/varen-gearbox-visual.png" alt="减速器可视化总览：装配四视图 + 零件缩略图 + 指标" width="760"/>
-</p>
-
-<p align="center">
-  内核证据渲染器 v2.15：只画特征边，平面扇形三角化的对角噪声全部消失 ——<br/>
-  <img src="docs/images/render-before-after.png" alt="证据渲染前后对比：逐三角画边 vs 只画特征边" width="900"/>
-</p>
-
-<p align="center">
-  <a href="https://github.com/vanyu0710/aicad/releases/tag/v0.22.0-beta"><img alt="Release" src="https://img.shields.io/badge/release-v0.21.0--beta-orange?logo=github" /></a>
+  <a href="https://github.com/vanyu0710/Varen-AI-CAD/releases"><img alt="Published release" src="https://img.shields.io/github/v/release/vanyu0710/Varen-AI-CAD?include_prereleases" /></a>
   <img alt="Status" src="https://img.shields.io/badge/status-closed%20beta-blue" />
-  <img alt="Python" src="https://img.shields.io/badge/python-3.12-blue" />
-  <img alt="Tests" src="https://img.shields.io/badge/tests-473%20backend%20%2B%2094%20frontend-brightgreen" />
+  <img alt="Platform" src="https://img.shields.io/badge/platform-Windows%20x64-lightgrey" />
   <img alt="License" src="https://img.shields.io/badge/license-AGPL--3.0--or--later-green" />
-  <img alt="UI" src="https://img.shields.io/badge/UI-React%20%2B%20Three.js-61dafb" />
-  <img alt="CAD kernel" src="https://img.shields.io/badge/CAD%20kernel-MechKernel%20(Build123d)-green" />
 </p>
 
-> ⚠️ **License**：主仓与 CAD 内核 [`mechcad-kernel`](https://github.com/vanyu0710/mechcad-kernel)
-> 均为 **AGPL-3.0-or-later**。社区使用与贡献按 AGPL；闭源分发 / OEM 集成需商业许可（双许可策略见
-> [docs/license-strategy.md](docs/license-strategy.md)）。
->
-> 🚧 **状态**：v0.22.0-beta 封闭测试中——正在招募设计伙伴（见
-> [docs/beta.md](docs/beta.md)）。本产品的交付物是**可验证、可编辑的参数化装配原型**，
-> 用于概念设计与快速原型；`production_ready` 恒为 false，未经工程师复核不得直接投产。
+> **当前状态：** Windows only，封闭 Beta。Varen CAD 面向概念设计和快速原型，不是 SolidWorks 替代品，不提供完整的 2D 工程图流程或通用装配配合求解器，并且 `production_ready` 始终为 `false`。所有输出都需要人工工程复核。
 
-### 先看这三件事
+## 先看真实结果
 
-- **能做什么**：从自然语言任务出发，规划 BOM，逐件生成参数化 B-Rep 几何，导出 STEP，并用几何契约与干涉检查阻止明显错误的装配交付。
-- **不能做什么**：它不是 SolidWorks 替代品，也不承诺工程图、钣金、螺纹、曲面、装配配合求解或直接投产；当前仍是 Windows 封闭 Beta。
-- **怎么参与**：不需要先写代码。可以提交一个真实但已脱敏的机械任务、复现一个失败，或审查 STEP 下游兼容性；入口统一在 [Discussions](https://github.com/vanyu0710/aicad/discussions) 和 [Issue 模板](https://github.com/vanyu0710/aicad/issues/new/choose)。
+仓库包含 Agent 工作流的真实端到端输出：
 
-> **给第一次到访的人**：如果你只想判断项目是否值得试，先看上面的减速器/变速器证据，再按 [3 分钟快速开始](docs/GETTING_STARTED.md) 运行一个最小法兰任务。仓库根目录 `VERSION` 是当前公开安装包版本；开发分支可能包含尚未发布的改动。
+<p align="center">
+  <b>1:100 三级齿轮减速器装配</b> —— 8 个零件、53 步、758 秒、硬碰撞 0<br/>
+  <img src="https://raw.githubusercontent.com/vanyu0710/Varen-AI-CAD/main/docs/images/varen-gearbox-assembly.png" alt="Varen CAD 三级齿轮减速器装配" width="820"/>
+</p>
 
-当前公开版、开发分支和下一次发布的区别见 [项目状态](docs/PROJECT_STATUS.md)。
+<p align="center">
+  <b>五挡手动变速器装配</b> —— 渐开线斜齿轮、26 个零件、硬碰撞 0<br/>
+  <img src="https://raw.githubusercontent.com/vanyu0710/Varen-AI-CAD/main/docs/images/varen-transmission-visual.png" alt="Varen CAD 五挡手动变速器装配" width="860"/>
+</p>
 
----
+<p align="center">
+  <b>几何证据渲染器</b> —— 只显示特征边，消除三角化对角线噪声<br/>
+  <img src="https://raw.githubusercontent.com/vanyu0710/Varen-AI-CAD/main/docs/images/render-before-after.png" alt="几何证据渲染器对比" width="860"/>
+</p>
 
-## 目录
+<p align="center">
+  <b>启动页</b><br/>
+  <img src="https://raw.githubusercontent.com/vanyu0710/Varen-AI-CAD/main/docs/images/varen-startup.jpg" alt="Varen CAD 启动页" width="820"/>
+</p>
 
-- [它是什么](#它是什么)
-- [怎么运行](#怎么运行)
-- [使用流程](#使用流程)
-- [架构总览](#架构总览)
-- [目录结构](#目录结构)
-- [功能矩阵](#功能矩阵)
-- [AI 集成](#ai-集成)
-- [开发与测试](#开发与测试)
-- [API](#api)
-- [文档](#文档)
-- [被冻结的旧链路（FeaturePlanV3）](#被冻结的旧链路featureplanv3)
+<p align="center">
+  <b>工作区与 Agent 对话</b><br/>
+  <img src="https://raw.githubusercontent.com/vanyu0710/Varen-AI-CAD/main/docs/images/varen-workspace-chat-snapshot.jpg" alt="Varen CAD 工作区与 Agent 对话" width="820"/>
+</p>
 
----
+<p align="center">
+  <b>减速器运行总览</b><br/>
+  <img src="https://raw.githubusercontent.com/vanyu0710/Varen-AI-CAD/main/docs/images/varen-gearbox-visual.png" alt="Varen CAD 减速器运行总览" width="820"/>
+</p>
 
-## 它是什么
+计划中的 45–60 秒工作流视频请见[视频分镜与制作说明](docs/launch/video-brief.md)。目前尚未在 README 中加入可播放的视频。
 
-Varen CAD 把 **MechKernel 参数化 CAD 内核**（真实 OCC 7.9.3 几何）接到一套
-**FastAPI + React + Three.js** 的 IDE 上，产品形态是 **"CAD 领域的 Codex"**：
+## Varen CAD 的差异化
 
-```
-你的一句话/草图（对话式会话，运行中可插话）
-   │
-   ▼
-┌──────────────────────── AI Agent（harness）────────────────────────┐
-│  LLM 原生 function calling 逐步调用内核 36 个公开 op                │
-│  每步: 观察 → 决策(工具调用) → 执行 → 读回 StepResult → 自修复       │
-│  流式: 模型文字 token 级 SSE → WS agent_text_delta → 打字机          │
-│  会话: 每项目一条持久会话（/agent/message + /agent/session）         │
-│  提问: ask_user 结构化问题卡片（单选/多选/文本 + 自动"其他"）        │
-│  计划: 计划模式下 propose_plan 出分步计划 → 审批 → update_plan 进度  │
-│  人在回路: 破坏性操作/提问 → 审批卡 → 批准/改参/拒绝               │
-│  vision: 任务消息可携带草图图片（OpenAI blocks / Anthropic 转换）    │
-└───────────────────────────────┬────────────────────────────────────┘
-                                │ stdio JSON-lines RPC (子进程)
-                                ▼
-┌────────────────── MechKernel (mechcad-kernel 仓) ───────────────────┐
-│ 参数化特征历史 feature_graph · _op_history · select 选边/选面        │
-│ 任意方向孔/面上草图 · 测量 · 导出 STEP/STL · 事务 undo/redo          │
-└──────────────────────────────────────────────────────────────────────┘
-```
+### 1. 真实 CAD 几何，不是图片或网格生成
 
-**不是"让 AI 写任意 Python"**。执行层被严格约束在 36 个经验证的公开 op 上，
-每步都有结构化反馈（`StepResult`）与几何验证，失败可自动修复或回退。
+- 通过 MechKernel CAD 内核使用 OpenCascade 7.9.3。
+- 生成可被 CAD 软件检查的边界表示几何（B-Rep），保留拓扑与几何信息。
+- 保留参数化特征图和操作历史，可以修改特征并进行参数化重放。
+- 导出 STEP 和 STL，供下游 CAD、审查和原型流程使用。
 
-## 界面预览（实测截图）
+### 2. Agent 工作流，不是一次性生成
 
-**启动页** —— 深蓝夜空品牌主页，后端连接状态、最近项目、新建入口一目了然：
+多零件任务遵循明确的工程步骤：
 
-![Varen CAD 启动页](docs/images/varen-startup.jpg)
+1. 调研和工程计算，例如传动比、中心距、轴径估算和壁厚估算。
+2. 尺寸或设计意图不明确时，提出结构化问题。
+3. 规划 BOM，列出零件名称、数量和关键参数。
+4. 用户审批计划后，才允许计划修改几何。
+5. 每个零件使用独立内核会话逐件建模。
+6. 放置装配、导出并进行审查。
+7. 几何验证和干涉检查通过后，才接受产物。
 
-**主工作区 + 对话式 AI 助手** —— 3D 视口实时渲染内核几何，右侧 AI 抽屉就是一条持久会话：
-用户消息、助手流式文字、每个内核工具的卡片，以及几何变化时自动内嵌的**可视化快照**都留在会话流里：
+Agent 通过受约束的内核操作和结构化 `StepResult` 反馈工作，不会直接获得一个可以随意执行任意 CAD Python 的黑盒环境。
 
-![Varen CAD 工作台与 AI 助手会话](docs/images/varen-workspace-chat-snapshot.jpg)
+### 3. 失败会阻止交付
 
----
+模型回复看起来成功，不代表交付成功。以下情况会让系统停止或拒绝产物：
 
-## 怎么运行
+- 零件包含多个实体或悬浮特征；
+- 特征契约与实测孔径、数量或位置不一致；
+- 两个零件发生未批准的干涉；
+- 参数化重放过程中脚本或操作失败；
+- BOM 不完整，或验证门控没有通过。
 
-### 🚀 最快路径：下载 Beta 安装包（推荐，无需 Python）
+失败会生成结构化报告，并可以触发回滚或再次建模。每一份交付报告中的 `production_ready` 都保持为 `false`。
 
-1. 下载 **[VarenCAD-win64-0.22.0-beta.zip](https://github.com/vanyu0710/aicad/releases/tag/v0.22.0-beta)**（≈180 MB），
-   与同页 `.sha256` 附件核对校验值：`Get-FileHash .\VarenCAD-win64-0.22.0-beta.zip -Algorithm SHA256`
-2. 解压后双击 `VarenCAD.exe`（SmartScreen"未知发布者"属预期，未签名；说明见安装指引）。
-3. 设置中心 → 模型：配一个 OpenAI 兼容端点（设计伙伴可申请限额试用端点），
-   然后输入"做一块 120×120×12 法兰，中心 Ø30 通孔，6 个 Ø8 螺栓孔在 Ø90 圆上"。
+### 4. 本地优先，并且全过程可审阅
 
-已知限制与免责见 [KNOWN_ISSUES.md](KNOWN_ISSUES.md)；封闭 Beta 规则见 [docs/beta.md](docs/beta.md)。
+- 任务数据、中间状态、会话和模型产物可以保存在本地 `work/` 目录。
+- 用户可以在任务运行过程中查看工具调用、假设、审批卡、特征历史、快照和报告。
+- 模型层支持 OpenAI-compatible 端点，包括用户自行管理的端点。
+- 适用于对数据敏感的机械、机器人和硬件团队。
 
-### 推荐：Windows 产品模式（桌面启动）
+本地存储不等于离线推理：发送到远程端点的提示词、附图和任务上下文受该服务商的数据政策约束。
 
-首次运行会自动构建前端，并在桌面创建 `MechCAD IDE` 快捷方式（脚本沿用旧名，见 `scripts/mechcad-tray.ps1`）：
+## 3 分钟快速开始
+
+### Windows 安装包
+
+本次在 GitHub 核对到的 Windows 安装包是 **v0.21.0-beta**（约 180 MiB）。源码 [VERSION](VERSION) 为 `0.22.0-beta`，并不代表同版本安装包已经发布，详见[项目状态](docs/PROJECT_STATUS.md)。
+
+1. 打开 [v0.21.0-beta 发布页](https://github.com/vanyu0710/Varen-AI-CAD/releases/tag/v0.21.0-beta)，在 **Assets** 中下载 `VarenCAD-win64-0.21.0-beta.zip` 和配套 `.sha256` 文件，不要下载源码压缩包。运行 `Get-FileHash .\VarenCAD-win64-0.21.0-beta.zip -Algorithm SHA256`，将结果与校验文件比较。
+2. 解压并运行 `VarenCAD.exe`。
+3. 打开 **设置 → 模型**，配置一个 OpenAI 兼容端点。
+4. 试运行：
+
+   ```text
+   做一块 120×120×12 mm 的法兰，中心 Ø30 通孔，Ø90 螺栓圆上均匀分布 6 个 Ø8 孔。报告所有假设，验证失败时拒绝导出。
+   ```
+
+### 从源码运行
 
 ```powershell
+git clone https://github.com/vanyu0710/Varen-AI-CAD.git
+git clone https://github.com/vanyu0710/mechcad-kernel.git
+cd Varen-AI-CAD
+python -m venv .venv
+.\.venv\Scripts\Activate.ps1
+pip install -r requirements.txt build123d==0.11.1 cadquery-ocp-novtk==7.9.3.0
 .\start-mechcad-pro.cmd
 ```
 
-之后双击桌面快捷方式即可。FastAPI 会同时托管前端、API 和 WebSocket：
-打开 `http://127.0.0.1:8001/`。系统托盘提供"打开界面 / 重启服务 / 打开日志 / 退出"。
+默认内核路径是与主仓库同级的 `mechcad-kernel`。如需覆盖，可设置 `MECHCAD_KERNEL_REPO` 或 `MECHCAD_KERNEL_PYTHON`。详见 [.env.example](.env.example) 和[入门指南](docs/GETTING_STARTED.md)。
 
-可选参数：
+## 工作流中实际可见的内容
 
-```powershell
-.\start-mechcad-pro.cmd --no-browser
-.\start-mechcad-pro.cmd --port 8080
-.\start-mechcad-pro.cmd --skip-shortcut
-```
+- **调研：** `design_calculate` 将计算过程和假设记录在会话中。
+- **提问：** `ask_user` 展示单选、多选或文本问题。
+- **规划：** `propose_plan` 创建 BOM 和分组建模步骤；审批是硬门控。
+- **建模：** 公开内核操作和受约束的 `run_build_script` 路径生成真实特征。
+- **零件完成：** `finish_part` 在归档 STEP/STL 前执行单实体和特征契约检查。
+- **编辑：** 特征树支持改参数、重放、删除、撤销和重做。
+- **装配：** `export_assembly` 按 BOM 放置零件，创建装配 STEP，并报告零件对之间的干涉。
+- **证据：** execution report 包含假设、已完成零件、失败门控、几何检查和待人工复核项目。
 
-环境变量：`MECHCAD_PORT`、`MECHCAD_OPEN_BROWSER`、`MECHCAD_LOG_DIR`。
+## 技术边界
 
-### 开发模式（Vite + FastAPI 双进程）
+Varen CAD 明确不声称提供：
 
-```powershell
-.\start-mechcad.cmd          # 访问 http://127.0.0.1:5173/
-```
+- 完整的 2D 工程图和公差标注流程；
+- 完整的钣金、标准螺纹或曲面建模流程；
+- 通用装配配合、约束或运动求解器；
+- 无人值守的制造批准；
+- “模型说几何正确，所以几何就一定正确”的承诺。
 
-手动启动：
+产品当前仅支持 Windows，处于封闭 Beta。用于制造前必须经过人工工程复核。`production_ready` 始终为 `false`。
 
-```powershell
-# 后端 (Python 3.12 venv)
-.\.venv\Scripts\Activate.ps1
-pip install -r requirements.txt build123d==0.11.1 cadquery-ocp-novtk==7.9.3.0
-.\.venv\Scripts\python.exe -m backend.main
+## Beta 与失败报告
 
-# 前端 (另一个终端)
-cd frontend
-npm install
-npm run dev
-```
+我们正在招募机械、机器人和硬件设计伙伴：他们可以使用一个真实但已脱敏的任务，并在其他 CAD 软件中检查导出的 STEP。
 
-> ⚠️ 需要 MechKernel 内核。Varen CAD 的 agent 通过 stdio RPC 调用
-> `mechcad-kernel` 仓的子进程 `mech_kernel/server.py`。
-> 默认假设内核在 aicad 旁的同级 `mechcad-kernel` 目录，可用
-> `MECHCAD_KERNEL_REPO` / `MECHCAD_KERNEL_PYTHON` 覆盖（见 `.env.example`）。
+- [申请封闭 Beta](https://github.com/vanyu0710/Varen-AI-CAD/issues/new?template=beta_application.yml)
+- [报告任务失败](https://github.com/vanyu0710/Varen-AI-CAD/issues/new?template=task_failure.yml)
+- [参与 Discussions](https://github.com/vanyu0710/Varen-AI-CAD/discussions)
+- [阅读已知问题](KNOWN_ISSUES.md)
 
----
-
-## 使用流程（v0.12 多零件 harness）
-
-1. **打开界面**，`新建项目`。
-2. 在右侧常驻的 **AI 助手** 会话列直接下指令（如"120×120×12 法兰，中心 Ø30 通孔，6 个 Ø8 螺栓孔在 Ø90 圆上"，
-   或"给我设计个 1:100 的变速箱"）；点输入框左侧 **＋** 可附草图（首条消息自动带图，vision 进 agent 上下文）。`Ctrl+G` 聚焦输入框。
-3. **多零件/机构级任务（变速箱、减速器等）自动进入计划模式**，agent 先像工程师一样**调研**：
-   `design_calculate` 做传动比分级、齿轮副几何/中心距、轴径初估、壁厚估算（内置 kind 不够可提交纯算术代码进沙箱），
-   调研计算在会话流里以卡片可见。
-4. Agent 在**会话流**里工作：模型文字**逐字流式**显示，每个工具调用是一张内嵌卡片（op / 参数 / 结果），
-   几何变化时自动内嵌**可视化快照**；3D 视口随之刷新。
-5. **运行中也能插话**：聊天框始终可用，消息排队后在当前步骤结束、下一轮模型决策前生效。
-6. 关键信息不明确时，Agent 弹出**结构化提问卡片**（单选 / 多选 / 文本，附"其他"自定义），你点选或填写即可；
-   需要破坏性操作（删除特征 / confirm_replace 替换 / 抽壳）时弹**审批卡**：**批准 / 改参 / 拒绝**，
-   超时（默认 600s）视为拒绝并告知模型不要重试。
-7. **BOM 计划审批**：调研+提问后 agent 出 `propose_plan` 计划——**要几个零件、分别是什么、关键参数**（零件清单）
-   + 按零件分组的建模步骤，你在**计划审批卡**上"批准 / 要求修改"；批准前不得改几何（harness 硬门控）。
-8. 批准后**逐件建模**：一个内核会话只装一个零件。复杂零件（箱体/阶梯轴/孔阵列）用 **`run_build_script`
-   代码通道**——模型写 Python 脚本一次成型（几何仍只能走内核 `k` 门面公开 op，失败自动回滚并回传原始
-   traceback，脚本 op 照常进特征历史可参数重放）。建完一件调 `finish_part` → 过**单实体 + 特征契约**两道
-   机器复检（断言"半径×数量"的圆柱面实测吻合才放行，防悬浮特征与谎报）→ 自动导出该件
-   `part_NN_名称.step/.stl` 归档、计划打勾、清空会话开下一件；每步有 `StepResult` 回读与四视角快照，失败自修复。
-9. 特征树 / 属性 / 评审 / 过程 / 导出在**底部结构抽屉**：可点选特征、**改参数**（参数化重放）、**删除特征**，支持内核级撤销/重做。
-10. **交付**：产物区提供零件级 STEP/STL 逐个下载 + execution_report（含调研计算转录、BOM 归档清单、假设与需复核项）；
-    单零件任务收尾自动 `validate_geometry` + 导出整件 STEP/STL。齿轮零件用内核 `make_gear` 真渐开线齿形，不造假。
-11. **装配（v0.14 F2a）**：全部零件归档后 agent 调 `export_assembly`——按 BOM 位姿生成**多实体装配 STEP**
-    （XCAF 具名产品树）+ 全对干涉报告（可豁免设计意图内重叠）+ 分件着色四视角预览；视口自动切装配模式
-    （多件按位姿叠加、可显隐/点选高亮），产物区出现装配面板。零件库在 `work/project_parts/{项目}/`（版本化 + manifest）。
-12. **会话持久化**：每项目一条 agent 会话（`work/agent_sessions/{id}.json`，含计划与零件库镜像），重开可回看；
-    随时**暂停接管**（停止 agent → 手动编辑 → 发消息继续，新任务消息自动携带最新特征上下文）。
-13. **可靠性硬门控（v0.15 P0 修复）**：成功由程序判定不由文字判定——无产物/计划未完成/strict 验证不过/步数耗尽一律 ok=false + error_kind；finish_part 过 strict 几何验证才归档；工具结果结构化裁剪（不字符串化、数组截断附 total）；几何更新按指纹而非体积；run_build_script 任一 op 失败即整体回滚（SCRIPT_OP_FAILED + failed_op）
-14. **七模块系统提示词（v0.15）**：角色/建模原则/工作流程/API 规范/验证/修复/输出格式结构化重写（中英同步），结构由测试锁死；BOM 参数表（key_params）与 SUCCESS/PARTIAL/FAILED 三态由程序判定；`MECHCAD_PROMPTS_FILE` 支持提示词 A/B 基准（scripts/ab_prompt_housing.py）
-15. **几何语义闭环（v0.16）**：同名返工原子换版、BOM 为装配事实来源（计划外零件名 BOM_UNKNOWN_PART 拒绝、历史残留标 superseded 排除）；未豁免硬碰撞阻断导出（INTERFERENCE_BLOCKED），豁免须声明 category fit|mesh；feature_contract 支持孔语义契约 {type: through_hole|blind_hole, diameter_mm, count, positions}——外凸台冒充通孔被内核分类器直接拒绝。
-16. **变速箱最新全流程实测（v0.16 代码）**：真实 LLM 53 步 / 758s 一次通过——8 件（3 真渐开线齿轮 + 4 阶梯轴 + 箱体，全 script 件）逐件过 strict 验证与孔语义契约，装配 28 对干涉全查、2 对啮合区按 category=mesh 豁免、硬碰撞 0；首轮曾被硬碰撞门拦下并自行返工轴/齿轮位姿（同名原子换版）。
-17. **专业 CAD 视口（v0.19）**：工程 CAD 风格着色——按内核材质表分材质（铸铁/钢/青铜…）、曲面平滑 + 特征棱线锐利、**正交投影默认**（可切透视）、**剖切视图**（X/Y/Z + 偏移 + 翻转）、渲染质量档位（高/标准，DPR 与棱线预算），光照按 CAD 视口调平不做过曝。
-18. **模型配置控制台（v0.20）**：设置中心 → 模型，专业 harness 级配置台——13 家**厂商预置**一点自动填 Base URL/协议/推荐模型、**拉取模型列表**（服务端代理 `GET /models`，可搜索下拉）、API Key 尾号掩码徽章（`已保存 ····abcd`）、**每角色生成参数**（温度/最大 token/超时/重试，留空跟随 .env 与代码默认）、连接诊断（**延迟 ms + 模型回显 + 端点**）、导出 JSON / 复制 .env（密钥自动脱敏）。
-19. **右键零件透明度（v0.21）**：视口里右键任意零件 → SolidWorks 式菜单：不透明 / 半透明 / 透明、隐藏零件、全部显示；半透明件内部齿轮一眼看穿（棱线同步淡出、关深度写入防闪烁），悬停高亮 + 指针光标，底部芯片汇总"隐藏 N · 透明 N"并可一键恢复；右键拖拽是平移不会误弹菜单。
-20. **审批可靠性（v0.22）**：agent 停止/崩溃/结束时，未答复的审批由 broker 立即取消并唤醒等待线程（不再挂到超时），前端随 `agent_done` 清空审批卡；对已失效审批的答复会移除卡片并提示，而不是反复报 "No running agent"。
-
----
-
-## 架构总览
-
-```
-┌──────────────────────────── React IDE (保留壳) ────────────────────────────┐
-│  Three.js 视口(STL) · 特征树(feature_graph) · 属性面板(改参数→重放)         │
-│  Agent 运行条 · 审批面板(approve/edit/reject) · 撤销/重做                   │
-└──────────────┬──────────────────────────────────────────────────────────────┘
-               │ REST + WS   (agent_step / approval_required / artifact_ready …)
-┌──────────────▼──────────────────────────────────────────────────────────────┐
-│  FastAPI backend  (backend/main.py + backend/agent + backend/kernel_worker)  │
-│   Agent loop:  cap.list_public() → LLM tools → 循环决策 → worker RPC         │
-│     → 读 StepResult → RECOVERABLE 自修复 → 人在回路确认点                    │
-│   会话/快照/事件总线/静态托管 (session/storage/events/static_assets)          │
-└──────────────┬──────────────────────────────────────────────────────────────┘
-               │ stdio JSON-lines RPC (子进程, 一会话一实例, 永不 import CAD)
-┌──────────────▼──────────────────────────────────────────────────────────────┐
-│  MechKernel worker (mechcad-kernel/mech_kernel/server.py)                    │
-│   commands: capabilities/execute/feature_tree/select_refs/update_feature/    │
-│             delete_feature/undo/redo/export/export_mesh/validate_geometry/…  │
-│   内部: MechKernel().execute(op, **kw) → StepResult                          │
-│        feature_graph + _op_history = 特征树与参数化重放源 (D1)               │
-└──────────────────────────────────────────────────────────────────────────────┘
-```
-
-### 关键边界（D1–D5）
-
-| 决策 | 内容 |
-|---|---|
-| **D1** | 特征锚点 = MechKernel `feature_graph` / `_op_history`。前端树/面板/撤销重做都基于它；`FeaturePlanV3` 不承担执行语义。 |
-| **D2** | 进程边界。MechKernel 跑在 worker 子进程，backend **永不 import CAD 库**；一会话一实例。 |
-| **D3** | 验证 = 每步 `validate_geometry` + `select` 几何摘要回喂 + RECOVERABLE 自修复 + 快照回退；保留只读测量。 |
-| **D4** | 人在回路 = 低打扰确认点 + 随时接管。默认只在推断尺寸、破坏性操作、选边歧义时暂停征求用户。 |
-| **D5** | 保留 aicad 壳：React 前端、Three.js 视口、mechcad_ai 客户端、WS/会话/工件、family template 概念。 |
-
----
-
-## 目录结构
-
-```
-aicad/
-├─ backend/                  # FastAPI 后端
-│  ├─ main.py                # REST + WS + agent start/stop/resolve + kernel REST 接线
-│  ├─ agent/                 # 核心 agent loop
-│  │  ├─ loop.py             #   多轮原生 tool-call 循环 + RECOVERABLE 自修复 + 确认点
-│  │  ├─ tools.py            #   cap.list_public() → LLM 工具表(JSON Schema)
-│  │  └─ approvals.py        #   ApprovalBroker: 审批请求/答复/超时
-│  ├─ kernel_worker.py       # MechKernel 子进程 RPC client + 会话管理
-│  ├─ mechcad_ai/            # 模型层: client(OpenAI/Anthropic 兼容+原生 tools)/prompts
-│  ├─ session.py / storage.py# 快照历史/undo-redo/工件
-│  ├─ events.py              # 事件总线 (WS 推送)
-│  ├─ cad.py                 # (冻结) 旧受控 build123d worker launcher
-│  ├─ ai.py                  # (冻结) 旧 FeaturePlan 编排 + 确定性 fallback
-│  └─ geometry/              # (冻结) 只读 BRep 测量/证据/语义验证
-├─ cad_worker/               # (冻结) 旧受控 build123d subprocess
-├─ frontend/                 # React + TypeScript + Vite + Three.js
-│  ├─ src/Viewport.tsx            # 3D 视口：CAD 着色/正交/剖切/右键透明度
-│  ├─ src/ModelConfigPanel.tsx    # 模型配置台（厂商画廊/拉模型/参数/诊断）
-│  ├─ src/materials.ts            # 视口材质表（与内核 materials.py 一致性测试）
-│  ├─ src/providers.ts            # 厂商预置库（Base URL/协议/推荐模型）
-│  ├─ src/partVisual.ts           # 零件透明度/拾取纯逻辑（含单测）
-│  ├─ src/KernelFeatureTree.tsx   # 特征树(内核 feature_graph)
-│  ├─ src/KernelFeatureForm.tsx   # 属性面板(改参数→update_feature)
-│  └─ src/ApprovalPanel.tsx       # 审批卡
-├─ prompts/prompts.yaml      # 集中式提示词 (agent_modeling 等)
-├─ tests/                    # 后端 unittest 套件
-├─ docs/                     # 架构/功能/审计文档
-└─ start-mechcad-pro.cmd     # 产品模式启动 (托盘+桌面快捷方式)
-```
-
-> 标注 **(冻结)** 的目录属于旧 FeaturePlanV3 链路，仅作参考与切回用途，前端默认不再调用。
-
----
-
-## 功能矩阵
-
-| 领域 | 支持情况 |
-|---|---|
-| **建模能力** | 以 MechKernel capability registry 为准：workplane / sketch / extrude / revolve / sweep / boolean / hole(任意方向) / fillet / chamfer / shell / pattern / select 选边选面 / 测量 / undo-redo |
-| **AI agent** | 原生 function calling 逐步驱动 34 公开 op（含 `make_gear` 真渐开线齿轮）；`RECOVERABLE` 自修复（schema 过滤 `suggestion.fix`）；`design_calculate` 设计调研（内置工程计算 + 受限纯算术沙箱）；**`run_build_script` 代码通道**（复杂零件一次脚本完成，几何仍只能走内核 k 门面，失败自动回滚回传 traceback，脚本 op 可参数重放） |
-| **多零件流程** | 复杂任务自动进计划模式 → 调研 → BOM 计划审批 → `finish_part` 逐件建模归档（零件级 STEP/STL + reset 清会话）；**单实体设计复检门**（悬浮特征机器拦截）；四视角证据快照 |
-| **人机协作** | 三类确认点（破坏性操作 / 破坏性修复 / ask_user）→ 审批卡 approve-edit-reject；暂停接管→交还；run 结束后审批卡自动清理（v0.22） |
-| **3D 视口** | 工程 CAD 风格：按内核材质表分材质着色、正交/透视切换、剖切（X/Y/Z + 偏移 + 翻转）、质量档位、**右键零件透明度/隐藏**（SW 习惯）、悬停高亮；装配按位姿叠加、可显隐/点选 |
-| **模型配置** | 设置中心模型控制台：厂商预置画廊、拉取模型列表、每角色生成参数（温度/token/超时/重试）、连接诊断（延迟+回显+端点）、密钥尾号掩码、导出 JSON/.env（脱敏） |
-| **几何验证** | 每步 `validate_geometry` + `select` 几何摘要回喂；收尾 `validate_geometry(standard)`；不再依赖语义 verifier（D3） |
-| **导出** | STEP、STL（agent 路径）；旧 worker 还产 OBJ/report.md（保留） |
-| **旧 FeaturePlanV3 链** | **冻结**（`box_base`/`hole`/`groove` 等特征矩阵见 `FEATURE_SUPPORT.md`，已不在默认 UI 展示） |
-| **明确不支持** | 无内核对应实现的幻想 op；agent 假设须确认，`production_ready` 恒为 false |
-
----
-
-## AI 集成
-
-`backend/mechcad_ai/` 是真实模型层（OpenAI / Anthropic 兼容 HTTP client，自动 `/v1` 重试）：
-
-- `client.py` —— `chat_completion_with_tools` 提供 **原生 function calling**（OpenAI `tools` / Anthropic `tool_use`）。
-- `prompts.py` —— 从 `prompts/prompts.yaml` 加载集中式提示词。
-- `gen` prompt `agent_modeling` 指导 agent 用 `ask_user` 向用户提问关键尺寸。
-
-模型配置来自 per-project `settings`，回退到环境变量 `MECHCAD_PLANNER_*` / `MECHCAD_VISION_*`；
-设置中心 → **模型** 提供可视化配置台（厂商预置 / 拉取模型列表 / 每角色生成参数 / 连接诊断），
-每角色的温度、最大 token、超时、重试按 **项目配置 > 环境变量 > 代码默认** 解析后传入每次调用。
-API Key 只保存在服务端，回传 UI 的永远是带尾号的掩码（`***configured:abcd***`），
-任何掩码值提交都视为"不修改"，`generate` 携带掩码配置也不会覆盖已存密钥。
-未配置模型时，旧链路有本地确定性 stub；agent 路径需配置 planner 模型才能运行。
-
----
-
-## 开发与测试
-
-后端（unittest）：
-
-```powershell
-.\.venv\Scripts\python.exe -m unittest discover -s tests
-```
-
-前端（Vitest + Testing Library）：
-
-```powershell
-cd frontend
-npm test
-npm run build
-```
-
-质量门：
-
-```powershell
-.\.venv\Scripts\python.exe -m compileall -q backend cad_worker
-git diff --check
-```
-
-核心覆盖：`tests/test_agent_loop.py`（agent 循环 + 审批/自修复/超时）、`test_approvals.py`（审批 broker：取消/超时/答复）、
-`test_kernel_worker.py`（RPC client）、`test_agent_api.py`（agent/kernel REST）、`test_v20_model_console.py`（模型配置台：参数优先级/拉模型列表/密钥掩码往返）；
-前端 `KernelFeatureTree.test.tsx`、`KernelFeatureForm.test.tsx`、`ApprovalPanel.test.tsx`、`ModelConfigPanel.test.tsx`（模型台交互）、
-`partVisual.test.ts`（视口透明度/拾取纯逻辑）、`providers.test.ts`（厂商库数据合法性）。
-内核自身套件在 `mechcad-kernel/mech_kernel/tests/`，用其仓库 `.venv` 跑：`python -m pytest mech_kernel/tests`。
-
-> 旧链路测试（`test_validation` / `test_geometry_*` / `test_cad_worker` 等）保留但不再驱动新功能。
-
----
-
-## API
-
-**项目与设置**
-
-- `POST /api/projects` → 创建项目
-- `GET /api/projects` / `GET/PATCH/DELETE /api/projects/{id}` → 读/改名/更新设置/删除
-- `POST /api/model/test` → 测试模型连接（延迟 / 回显 / 端点诊断，不泄漏 API key）
-- `POST /api/model/list` → 代理拉取厂商模型列表（`GET /models`，密钥只在请求头，不泄漏）
-
-**Agent（主路径）**
-
-- `POST /api/projects/{id}/agent/start` → 开始 agent loop
-- `POST /api/projects/{id}/agent/stop` → 步间软停
-- `POST /api/projects/{id}/agent/resolve` → 答复审批 `{approval_id, action: approve|reject|edit, args_override?}`
-
-**Kernel 直连（主路径）**
-
-- `GET  /api/projects/{id}/kernel/feature_tree` → 当前 feature_graph + op_history
-- `POST /api/projects/{id}/kernel/update_feature` → 改参数 → 参数化重放
-- `POST /api/projects/{id}/kernel/delete_feature` → 删特征 → 重放
-- `POST /api/projects/{id}/kernel/undo` / `.../redo` → 内核级撤重做
-- `POST /api/projects/{id}/undo` / `.../redo` → 有存活 kernel 走内核，否则回退快照
-
-**产物**
-
-- `GET /api/artifacts/{run_id}/{kind}` → `step` / `stl` / `obj` / `report` / `execution_report`
-- `WS /ws/projects/{id}` → 订阅 `agent_step` / `approval_required` / `artifact_ready` / `agent_done` 等事件
-
-**冻结（保留可用，默认 UI 不再调用）**
-
-- `POST /api/projects/{id}/generate`、`POST /api/projects/{id}/chat`、`PATCH /api/projects/{id}/features/{feature_id}`
-
----
+即使 Agent 在门控阶段停止，失败报告也有价值。它们会变成可复现的回归案例，而不会被包装成成功输出。
 
 ## 文档
 
-- [ARCHITECTURE.md](ARCHITECTURE.md) —— 系统如何工作、各真相所在
-- [FEATURE_SUPPORT.md](FEATURE_SUPPORT.md) —— 真正实现 / 部分 / 不支持 的功能矩阵
-- [DEVELOPMENT.md](DEVELOPMENT.md) —— 环境、测试、安全加特性
-- [docs/USER_GUIDE.md](docs/USER_GUIDE.md) —— 新手使用教程
-- [KNOWN_ISSUES.md](KNOWN_ISSUES.md) —— 安装前必读：边界、已知问题、隐私说明
-- [docs/beta.md](docs/beta.md) —— 封闭 Beta 计划与设计伙伴规则
-- [docs/launch/weekly/](docs/launch/weekly/) —— 失败周报（成功与失败同权重）
-- [benchmark/tasks.yaml](benchmark/tasks.yaml) —— 公开基准任务集（含负例）
-- 内核路线图：[mechcad-kernel/docs/mechkernel-harness-roadmap.md](https://github.com/vanyu0710/mechcad-kernel/blob/main/docs/mechkernel-harness-roadmap.md)（P0–P2 已落地，P3/P4 待做）
-- 旧 Gradio MVP：`legacy/gradio/`（参考用，需在 `PYTHONPATH` 下启动）
+- [系统架构](ARCHITECTURE.md)
+- [功能支持矩阵](FEATURE_SUPPORT.md)
+- [快速开始](docs/GETTING_STARTED.md)
+- [用户指南](docs/USER_GUIDE.md)
+- [已知问题与隐私说明](KNOWN_ISSUES.md)
+- [封闭 Beta 规则](docs/beta.md)
+- [开发与测试](DEVELOPMENT.md)
+- [许可策略](docs/license-strategy.md)
+- [更新日志](CHANGELOG.md)
 
----
+## License
 
-## 被冻结的旧链路（FeaturePlanV3）
+主仓库及其 MechKernel 集成遵循 AGPL-3.0-or-later。闭源分发和 OEM 集成可单独申请商业许可，详见 [docs/license-strategy.md](docs/license-strategy.md)。
 
-Varen CAD 默认走向 **MechKernel agent**。旧的"一次性规划 → FeaturePlanV3 → 受控 build123d worker"
-链路（视觉读图 → planner 出 FeaturePlanV3 → 校验 → evidence gate → worker 映射）
-**保持原样保留但已冻结**：代码、端点、测试全部在，前端不暴露旧入口，可经 `git` 历史或旧版 UI 切回。
-该链路仍支持 strict/smart 模式与 `box_base`/`hole`/`groove` 等特征（见 `FEATURE_SUPPORT.md`）。
-
-> 如需将 agent 作为唯一出口、或在未来闭源分发，请注意内核是 **AGPL-3.0**（见 `mechcad-kernel/LICENSE`）。
+> 语言切换：当前页面为中文，英文版见 [README.en.md](README.en.md)。

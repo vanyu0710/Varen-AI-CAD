@@ -1,8 +1,15 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
+  applyModelEnvProfile,
+  fetchEffectiveModels,
+  fetchModelEnvState,
   fetchModelList,
+  saveModelEnv,
   testModelConnection,
+  type EffectiveModelsResult,
+  type EffectiveRoleConfig,
   type ModelConfig,
+  type ModelEnvState,
   type ModelRole,
   type ModelTestResult,
 } from "./api";
@@ -18,6 +25,7 @@ type Props = {
   notice: string;
   saving: boolean;
   disabled?: boolean;
+  projectId?: string;
 };
 
 const MASK_RE = /^\*{3}configured(?::(.{1,8}))?\*{3}$/;
@@ -28,12 +36,82 @@ type RoleState = {
   result?: ModelTestResult;
 };
 
-export default function ModelConfigPanel({ value, onChange, onApply, dirty, notice, saving, disabled }: Props) {
+export default function ModelConfigPanel({ value, onChange, onApply, dirty, notice, saving, disabled, projectId }: Props) {
   const t = useT();
   const language = useAppStore((state) => state.language);
   const [results, setResults] = useState<Partial<Record<ModelRole, RoleState>>>({});
   const [testing, setTesting] = useState<ModelRole | "">("");
   const [exportNotice, setExportNotice] = useState("");
+  const [effective, setEffective] = useState<EffectiveModelsResult | null>(null);
+  const [effectiveLoading, setEffectiveLoading] = useState(false);
+  const [effectiveError, setEffectiveError] = useState("");
+  const [envState, setEnvState] = useState<ModelEnvState | null>(null);
+  const [envLoading, setEnvLoading] = useState(false);
+  const [envError, setEnvError] = useState("");
+  const [envNotice, setEnvNotice] = useState("");
+  const [envSavingRole, setEnvSavingRole] = useState<ModelRole | "">("");
+  const [profileApplying, setProfileApplying] = useState<ModelRole | "">("");
+
+  // 轻量防抖：面板打开与草稿变化时预览“应用后实际会走什么”；应用完成（dirty=false）也会刷新。
+  useEffect(() => {
+    if (!projectId) {
+      return;
+    }
+    let cancelled = false;
+    const timer = window.setTimeout(() => {
+      void (async () => {
+        setEffectiveLoading(true);
+        try {
+          const result = await fetchEffectiveModels(projectId, value);
+          if (!cancelled) {
+            setEffective(result);
+            setEffectiveError("");
+          }
+        } catch (error) {
+          if (!cancelled) {
+            setEffectiveError(error instanceof Error ? error.message : String(error));
+          }
+        } finally {
+          if (!cancelled) {
+            setEffectiveLoading(false);
+          }
+        }
+      })();
+    }, 250);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
+  }, [projectId, value, dirty]);
+
+  // .env 状态只在面板打开/项目切换时读取；草稿变化仍由 effective 接口单独预览。
+  useEffect(() => {
+    if (!projectId) {
+      return;
+    }
+    let cancelled = false;
+    void (async () => {
+      setEnvLoading(true);
+      try {
+        const result = await fetchModelEnvState(projectId);
+        if (!cancelled) {
+          setEnvState(result);
+          setEnvError("");
+        }
+      } catch (error) {
+        if (!cancelled) {
+          setEnvError(error instanceof Error ? error.message : String(error));
+        }
+      } finally {
+        if (!cancelled) {
+          setEnvLoading(false);
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [projectId]);
 
   const update = (patch: Partial<ModelConfig>) => onChange({ ...value, ...patch });
 
@@ -69,6 +147,67 @@ export default function ModelConfigPanel({ value, onChange, onApply, dirty, noti
     return out;
   };
 
+  const fillEffective = (role: ModelRole) => {
+    const item = effective?.[role];
+    if (!item) {
+      return;
+    }
+    // 不填 API Key：项目 key 留空才能继续走 .env 密钥兜底，也避免把尾号误当成密钥。
+    update({
+      [`${role}_base_url`]: item.base_url,
+      [`${role}_model`]: item.model,
+      [`${role}_protocol`]: item.protocol,
+    } as Partial<ModelConfig>);
+  };
+
+  const saveToEnv = async (role: ModelRole) => {
+    if (!projectId || envSavingRole) {
+      return;
+    }
+    setEnvSavingRole(role);
+    setEnvNotice("");
+    setEnvError("");
+    try {
+      // 掩码原样提交：后端可用项目里已存的真实 Key 写入本地 .env，前端始终拿不到密钥。
+      const result = await saveModelEnv(projectId, value, role);
+      setEnvState(result);
+      setEnvNotice(t("model.env.saved"));
+    } catch (error) {
+      setEnvError(error instanceof Error ? error.message : String(error));
+    } finally {
+      setEnvSavingRole("");
+    }
+  };
+
+  const applyProfile = async (role: ModelRole, provider: string) => {
+    if (!projectId || profileApplying) {
+      return;
+    }
+    setProfileApplying(role);
+    setEnvNotice("");
+    setEnvError("");
+    try {
+      await applyModelEnvProfile(projectId, role, provider);
+      const result = await fetchModelEnvState(projectId);
+      setEnvState(result);
+      const profile = result.profiles[role].find((item) => item.provider === provider);
+      // 后端已清掉该角色的项目覆盖；本地草稿同步置空，让预览立即显示 .env 生效值。
+      onChange({
+        ...value,
+        [`${role}_provider`]: provider,
+        [`${role}_api_key`]: "",
+        [`${role}_base_url`]: "",
+        [`${role}_model`]: "",
+        [`${role}_protocol`]: profile?.protocol || "openai",
+      } as ModelConfig);
+      setEnvNotice(t("model.profile.applied"));
+    } catch (error) {
+      setEnvError(error instanceof Error ? error.message : String(error));
+    } finally {
+      setProfileApplying("");
+    }
+  };
+
   const exportEnv = () => {
     const config = sanitizeForExport();
     const lines: string[] = ["# Varen CAD — model console export (keys are masked)"];
@@ -85,8 +224,8 @@ export default function ModelConfigPanel({ value, onChange, onApply, dirty, noti
   return (
     <section className="model-console">
       <div className="console-bar">
-        <RoleStatus role="vision" value={value} result={results.vision?.result} />
-        <RoleStatus role="planner" value={value} result={results.planner?.result} />
+        <RoleStatus role="vision" value={value} result={results.vision?.result} effective={effective?.vision} loading={effectiveLoading} dirty={dirty} />
+        <RoleStatus role="planner" value={value} result={results.planner?.result} effective={effective?.planner} loading={effectiveLoading} dirty={dirty} />
         <div className="console-actions">
           <button type="button" className="ghost-button" onClick={() => void copyText(JSON.stringify(sanitizeForExport(), null, 2), "JSON")}>
             {t("model.export.json")}
@@ -105,6 +244,19 @@ export default function ModelConfigPanel({ value, onChange, onApply, dirty, noti
       </div>
       {exportNotice && <div className="export-notice">{exportNotice}</div>}
 
+      <div className="effective-hint">
+        <span>{t("model.effective.hint")}</span>
+        <span>{t("model.env.hint")}</span>
+        {envNotice && <span className="source-chip env">{envNotice}</span>}
+        {(effectiveError || envError) && (
+          <span className="effective-error">
+            {effectiveError && `${t("model.effective.error")} ${effectiveError}`}
+            {effectiveError && envError ? " · " : ""}
+            {envError && `${t("model.env.error")} ${envError}`}
+          </span>
+        )}
+      </div>
+
       <RoleConsole
         role="vision"
         value={value}
@@ -112,6 +264,15 @@ export default function ModelConfigPanel({ value, onChange, onApply, dirty, noti
         disabled={disabled}
         testing={testing === "vision"}
         result={results.vision?.result}
+        effective={effective?.vision}
+        envState={envState}
+        envLoading={envLoading}
+        envSaving={envSavingRole === "vision"}
+        profileApplying={profileApplying === "vision"}
+        projectId={projectId}
+        onFillEffective={fillEffective}
+        onSaveEnv={saveToEnv}
+        onApplyProfile={applyProfile}
         onTest={test}
       />
       <RoleConsole
@@ -121,6 +282,15 @@ export default function ModelConfigPanel({ value, onChange, onApply, dirty, noti
         disabled={disabled}
         testing={testing === "planner"}
         result={results.planner?.result}
+        effective={effective?.planner}
+        envState={envState}
+        envLoading={envLoading}
+        envSaving={envSavingRole === "planner"}
+        profileApplying={profileApplying === "planner"}
+        projectId={projectId}
+        onFillEffective={fillEffective}
+        onSaveEnv={saveToEnv}
+        onApplyProfile={applyProfile}
         onTest={test}
       />
 
@@ -129,20 +299,38 @@ export default function ModelConfigPanel({ value, onChange, onApply, dirty, noti
   );
 }
 
-function RoleStatus({ role, value, result }: { role: ModelRole; value: ModelConfig; result?: ModelTestResult }) {
+function RoleStatus({
+  role,
+  value,
+  result,
+  effective,
+  loading,
+  dirty,
+}: {
+  role: ModelRole;
+  value: ModelConfig;
+  result?: ModelTestResult;
+  effective?: EffectiveRoleConfig;
+  loading: boolean;
+  dirty: boolean;
+}) {
   const t = useT();
   const prefix = role as "vision" | "planner";
   const model = String(value[`${prefix}_model`] || "");
   const protocol = String(value[`${prefix}_protocol`] || "openai");
   const provider = String(value[`${prefix}_provider`] || "custom");
-  const configured = Boolean(model && String(value[`${prefix}_base_url`] || ""));
-  const tail = isMasked(String(value[`${prefix}_api_key`] || "")) ? keyTail(String(value[`${prefix}_api_key`] || "")) : "";
-  const dot = result ? (result.ok ? "ok" : "bad") : "idle";
+  const configured = Boolean(model && String(value[`${prefix}_base_url`] || "")) || Boolean(effective?.configured);
+  const localTail = isMasked(String(value[`${prefix}_api_key`] || "")) ? keyTail(String(value[`${prefix}_api_key`] || "")) : "";
+  const tail = localTail || effective?.api_key_tail || "";
+  const dot = result ? (result.ok ? "ok" : "bad") : effective?.configured ? "idle" : "idle";
+  const shownModel = model || effective?.model || (effective || loading ? "" : t("model.use_env"));
   return (
     <div className={`console-chip ${configured ? "configured" : "env"}`}>
       <span className={`status-dot ${dot}`} aria-hidden />
       <span className="chip-role">{role === "vision" ? t("model.vision") : t("model.planner")}</span>
-      <code>{model || t("model.use_env")}</code>
+      <code>{shownModel || (loading ? t("model.effective.loading") : t("model.source.none"))}</code>
+      {effective && <span className={`source-chip ${effective.source}`}>{t(`model.source.${effective.source}`)}</span>}
+      {dirty && <span className="source-chip draft">{t("model.effective.unapplied")}</span>}
       <span className="proto-chip">{protocol === "anthropic" ? "Anthropic" : "OpenAI"}</span>
       {provider && provider !== "custom" && <span className="provider-chip-label">{findPreset(provider)?.label ?? provider}</span>}
       {tail && <span className="key-chip">····{tail}</span>}
@@ -157,7 +345,16 @@ function RoleConsole({
   result,
   testing,
   onTest,
+  onFillEffective,
+  onSaveEnv,
+  onApplyProfile,
+  effective,
+  envState,
+  envLoading,
+  envSaving,
+  profileApplying,
   disabled,
+  projectId,
 }: {
   role: ModelRole;
   value: ModelConfig;
@@ -165,7 +362,16 @@ function RoleConsole({
   result?: ModelTestResult;
   testing: boolean;
   onTest: (role: ModelRole) => void;
+  onFillEffective: (role: ModelRole) => void;
+  onSaveEnv: (role: ModelRole) => void | Promise<void>;
+  onApplyProfile: (role: ModelRole, provider: string) => void | Promise<void>;
+  effective?: EffectiveRoleConfig;
+  envState?: ModelEnvState | null;
+  envLoading: boolean;
+  envSaving: boolean;
+  profileApplying: boolean;
   disabled?: boolean;
+  projectId?: string;
 }) {
   const t = useT();
   const language = useAppStore((state) => state.language);
@@ -173,6 +379,7 @@ function RoleConsole({
   const set = (patch: Partial<ModelConfig>) => onChange({ ...value, ...patch });
   const protocol = String(value[f("protocol")] || "openai");
   const preset = findPreset(String(value[f("provider")] || ""));
+  const profiles = envState?.profiles[role] || [];
 
   return (
     <div className="role-console">
@@ -193,6 +400,12 @@ function RoleConsole({
           <button type="button" onClick={() => onTest(role)} disabled={disabled || testing}>
             {testing ? t("model.testing") : t("model.test")}
           </button>
+          <button type="button" className="ghost-button" onClick={() => onFillEffective(role)} disabled={disabled || !effective}>
+            {t("model.fill_effective")}
+          </button>
+          <button type="button" className="ghost-button" onClick={() => void onSaveEnv(role)} disabled={disabled || envSaving || !projectId}>
+            {envSaving ? t("model.env.saving") : t("model.env.save")}
+          </button>
         </div>
       </div>
 
@@ -204,8 +417,14 @@ function RoleConsole({
             role="option"
             aria-selected={preset?.id === item.id}
             className={`provider-chip ${preset?.id === item.id ? "active" : ""}`}
+            disabled={profileApplying}
             style={{ ["--accent" as never]: item.accent }}
             onClick={() => {
+              const profile = profiles.find((itemProfile) => itemProfile.provider === item.id);
+              if (projectId && profile?.configured) {
+                void onApplyProfile(role, item.id);
+                return;
+              }
               const next = applyProviderPreset(value, role, item.id);
               const modelKey = `${role}_model` as "vision_model" | "planner_model";
               const recommended = role === "vision" ? item.recommended_vision_model : item.recommended_planner_model;
@@ -214,10 +433,13 @@ function RoleConsole({
               }
               onChange(next);
             }}
-            title={item.base_url || t("model.preset.select")}
+            title={profiles.some((itemProfile) => itemProfile.provider === item.id && itemProfile.configured) ? t("model.profile.apply") : item.base_url || t("model.preset.select")}
           >
             <span className="provider-dot" aria-hidden />
             {item.label}
+            {profiles.some((itemProfile) => itemProfile.provider === item.id && itemProfile.configured) && (
+              <span className="provider-saved">{t("model.profile.saved")}</span>
+            )}
           </button>
         ))}
       </div>
@@ -240,6 +462,14 @@ function RoleConsole({
 
         <ApiKeyField role={role} value={value} onChange={onChange} disabled={disabled} keyUrl={preset?.key_url || ""} />
       </div>
+
+      {envLoading && <div className="effective-hint">{t("model.env.loading")}</div>}
+      {effective && !effective.configured && (
+        <div className="effective-missing">
+          {t("model.missing.prefix")}
+          {effective.missing.map((field) => t(`model.missing.${field}`)).join("、")}
+        </div>
+      )}
 
       <details className="param-drawer">
         <summary>

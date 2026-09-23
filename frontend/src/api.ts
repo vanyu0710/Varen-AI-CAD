@@ -196,6 +196,49 @@ export type ModelListResult = {
   message: string;
 };
 
+export type EffectiveRoleConfig = {
+  role: ModelRole;
+  configured: boolean;
+  source: "project" | "env" | "none";
+  model: string;
+  base_url: string;
+  protocol: string;
+  api_key_tail: string;
+  sources: Record<"api_key" | "base_url" | "model" | "protocol", "project" | "env" | "none">;
+  missing: string[];
+};
+
+export type EffectiveModelsResult = {
+  vision: EffectiveRoleConfig;
+  planner: EffectiveRoleConfig;
+};
+
+export type ModelEnvRole = {
+  role: ModelRole;
+  provider: string;
+  configured: boolean;
+  source: "env" | "none" | "profile";
+  model: string;
+  base_url: string;
+  protocol: string;
+  api_key_tail: string;
+  missing: string[];
+};
+
+export type ModelEnvProfiles = {
+  vision: ModelEnvRole[];
+  planner: ModelEnvRole[];
+};
+
+export type ModelEnvActive = {
+  vision: ModelEnvRole;
+  planner: ModelEnvRole;
+};
+
+export type ModelEnvState = {
+  active: ModelEnvActive;
+  profiles: ModelEnvProfiles;
+};
 export type SemanticTrianglesDisplayMesh = {
   type: "triangles";
   vertices: [number, number, number][];
@@ -677,6 +720,44 @@ export async function fetchModelList(role: ModelRole, config: ModelConfig, langu
   return parseResponse<ModelListResult>(response);
 }
 
+/**
+ * 预览“当前草稿应用后”实际会走的模型；服务端只返回 key 尾号，不返回密钥。
+ * 这里不能剥离掩码：掩码在项目上下文里表示“保留已存密钥”，空值才表示清空。
+ */
+export async function fetchEffectiveModels(projectId: string, config: ModelConfig) {
+  const response = await fetch(`${API_ROOT}/api/projects/${projectId}/model/effective`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ config }),
+  });
+  return parseResponse<EffectiveModelsResult>(response);
+}
+
+/** 读取 UI 管理的 .env 全局配置与供应商档案；密钥只返回尾号。 */
+export async function fetchModelEnvState(projectId: string) {
+  const response = await fetch(`${API_ROOT}/api/projects/${projectId}/model/env`);
+  return parseResponse<ModelEnvState>(response);
+}
+
+/** 把当前草稿保存为 .env 全局配置，同时保存为该供应商的可切换档案。 */
+export async function saveModelEnv(projectId: string, config: ModelConfig, role?: ModelRole) {
+  const response = await fetch(`${API_ROOT}/api/projects/${projectId}/model/env`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ config, role }),
+  });
+  return parseResponse<ModelEnvState>(response);
+}
+
+/** 切换到已保存供应商档案，并让该项目该角色回退到 .env 全局配置。 */
+export async function applyModelEnvProfile(projectId: string, role: ModelRole, provider: string) {
+  const response = await fetch(`${API_ROOT}/api/projects/${projectId}/model/env/${role}/apply`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ provider }),
+  });
+  return parseResponse<ProjectState>(response);
+}
 async function parseResponse<T>(response: Response): Promise<T> {
   const raw = await response.text();
   let data: any;

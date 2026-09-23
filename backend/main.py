@@ -54,17 +54,26 @@ from backend.schemas import (
     GeometrySelectRequest,
     KernelDeleteFeatureRequest,
     KernelUpdateFeatureRequest,
+    EffectiveModelsRequest,
+    EffectiveModelsResponse,
+    EffectiveRoleModel,
+    ModelEnvProfileApplyRequest,
+    ModelEnvSaveRequest,
+    ModelEnvState,
     ModelListResponse,
     ModelTestRequest,
     ModelTestResponse,
     ModelTestDiagnostics,
     ProjectSettingsRequest,
+    ProjectState,
     ProcessStep,
     RenameProjectRequest,
     StageEvent,
 )
+from backend.model_env_store import apply_model_env_profile, read_active_env, read_profiles, save_model_env
 from backend.mechcad_ai.client import (
     chat_completion_with_tools,
+    describe_role_config,
     has_configured_model,
     list_role_models,
     resolve_role_config,
@@ -323,14 +332,99 @@ def delete_project(project_id: str):
     return {"ok": True}
 @app.patch("/api/projects/{project_id}/settings")
 def update_project_settings(project_id: str, request: ProjectSettingsRequest):
+    """Merge a settings patch without wiping fields the caller did not submit.
+
+    The UI submits the full draft, so an explicitly empty field means "clear this
+    field and fall back to .env". Older/partial API clients can omit fields; those
+    values are preserved. Masked API keys always mean "keep the stored secret".
+    """
     project = _project_or_404(project_id)
+    merged = deepcopy(project.settings)
+    supplied_fields = request.model_fields_set
+    for field in ProjectSettingsRequest.model_fields:
+        if field not in supplied_fields:
+            continue
+        incoming = getattr(request, field)
+        if field in {"vision_api_key", "planner_api_key"}:
+            incoming = str(incoming or "")
+            if incoming.startswith(MASK_PREFIX):
+                existing = str(getattr(project.settings, field, "") or "")
+                incoming = existing
+        setattr(merged, field, incoming)
+    project = store.update_config(project_id, merged)
+    return _public_project(project)
+
+
+@app.post("/api/projects/{project_id}/model/effective", response_model=EffectiveModelsResponse)
+def project_effective_models(project_id: str, request: EffectiveModelsRequest) -> EffectiveModelsResponse:
+    """Preview the model that would be used after applying the current UI draft.
+
+    Draft fields win over stored project settings; masked API keys mean "keep the
+    stored secret". Empty fields then fall back to .env, matching resolve_role_config.
+    """
+    project = _project_or_404(project_id)
+    merged = deepcopy(project.settings)
+    supplied_fields = request.config.model_fields_set
     for role in ("vision", "planner"):
-        key = f"{role}_api_key"
-        incoming = str(getattr(request, key, "") or "")
-        existing = getattr(project.settings, key, "")
-        if _is_mask_value(incoming) and existing:
-            setattr(request, key, existing)
-    project = store.update_config(project_id, request)
+        for field in ("api_key", "base_url", "model", "protocol"):
+            attr = f"{role}_{field}"
+            # 未显式提供的字段不能被 ModelConfig 默认值覆盖（尤其是 protocol 默认 openai）。
+            if attr not in supplied_fields:
+                continue
+            incoming = str(getattr(request.config, attr, "") or "")
+            # 掩码表示“保留已存密钥”；显式空值表示清空并走 .env 兜底。
+            if field == "api_key" and incoming.startswith(MASK_PREFIX):
+                continue
+            setattr(merged, attr, incoming.strip())
+    return EffectiveModelsResponse(
+        vision=EffectiveRoleModel(role="vision", **describe_role_config(merged, "vision")),
+        planner=EffectiveRoleModel(role="planner", **describe_role_config(merged, "planner")),
+    )
+
+
+@app.get("/api/projects/{project_id}/model/env", response_model=ModelEnvState)
+def project_model_env(project_id: str) -> ModelEnvState:
+    """Read the global .env model state without exposing API keys."""
+    _project_or_404(project_id)
+    return ModelEnvState(active=read_active_env(), profiles=read_profiles())
+
+
+@app.post("/api/projects/{project_id}/model/env", response_model=ModelEnvState)
+def save_project_model_env(project_id: str, request: ModelEnvSaveRequest) -> ModelEnvState:
+    """Save the current console draft into local .env as active values and profiles.
+
+    Project API-key masks are resolved server-side so an already stored project key
+    can be copied to .env without ever sending the secret back to the browser.
+    """
+    project = _project_or_404(project_id)
+    try:
+        active, profiles = save_model_env(request.config, project.settings, request.role)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return ModelEnvState(active=active, profiles=profiles)
+
+
+@app.post("/api/projects/{project_id}/model/env/{role}/apply", response_model=ProjectState)
+def apply_project_model_env_profile(project_id: str, role: str, request: ModelEnvProfileApplyRequest) -> ProjectState:
+    """Switch one role to a saved provider profile and remove its project override.
+
+    The profile is stored in .env. Applying it also clears that role's project
+    fields, so the next message resolves the model from .env instead of the old
+    project override. Running agents keep their startup settings snapshot.
+    """
+    project = _project_or_404(project_id)
+    try:
+        apply_model_env_profile(role, request.provider)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=f"model profile not found: {request.provider}") from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    merged = deepcopy(project.settings)
+    for field in ("api_key", "base_url", "model", "protocol"):
+        setattr(merged, f"{role}_{field}", "")
+    setattr(merged, f"{role}_provider", request.provider)
+    project = store.update_config(project_id, merged)
     return _public_project(project)
 
 

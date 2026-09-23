@@ -550,7 +550,7 @@ class MechCADApiTests(unittest.TestCase):
         response = self.client.patch("/api/projects/does-not-exist", json={"name": "Nope"})
         self.assertEqual(response.status_code, 404)
 
-    def test_settings_update_preserves_configured_api_keys_when_blank(self) -> None:
+    def test_settings_update_clears_blank_key_but_preserves_masked_key(self) -> None:
         project_id = self._create_project()
         project = main_module.store.get_project(project_id)
         project.settings.vision_api_key = "sk-vision-keep"
@@ -572,7 +572,8 @@ class MechCADApiTests(unittest.TestCase):
         response = self.client.patch(f"/api/projects/{project_id}/settings", json=payload)
         self.assertEqual(response.status_code, 200, response.text)
         stored = main_module.store.get_project(project_id).settings
-        self.assertEqual(stored.vision_api_key, "sk-vision-keep")
+        # 显式空值表示清空项目级 Key 并走 .env 兜底；掩码表示保留已存密钥。
+        self.assertEqual(stored.vision_api_key, "")
         self.assertEqual(stored.planner_api_key, "sk-planner-keep")
 
 

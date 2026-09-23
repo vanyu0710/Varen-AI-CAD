@@ -222,6 +222,50 @@ def resolve_role_config(settings, role: str) -> dict[str, str]:
     }
 
 
+def describe_role_config(settings, role: str) -> dict[str, Any]:
+    """Describe the safe, effective model config for the UI without exposing secrets.
+
+    ``source`` summarizes precedence for the three fields that make a role usable
+    (api_key/base_url/model); ``sources`` keeps the per-field truth so mixed
+    project/env configurations remain debuggable. API keys are never returned,
+    only a four-character tail for recognition.
+    """
+    if role not in ENV_ROLE_MAP:
+        raise ValueError(f"unsupported model role: {role}")
+    env = ENV_ROLE_MAP[role]
+    resolved = resolve_role_config(settings, role)
+    sources: dict[str, str] = {}
+    for field in ("api_key", "base_url", "model", "protocol"):
+        raw = str(getattr(settings, f"{role}_{field}", "") or "").strip()
+        if raw and not raw.startswith("***configured"):
+            sources[field] = "project"
+        elif os.getenv(env[field], "").strip():
+            sources[field] = "env"
+        else:
+            sources[field] = "none"
+
+    required = ("api_key", "base_url", "model")
+    configured = all(resolved[field] for field in required)
+    missing = [field for field in required if not resolved[field]]
+    if configured and any(sources[field] == "project" for field in required):
+        source = "project"
+    elif configured:
+        source = "env"
+    else:
+        source = "none"
+    api_key = resolved["api_key"]
+    return {
+        "configured": configured,
+        "source": source,
+        "model": resolved["model"],
+        "base_url": resolved["base_url"],
+        "protocol": resolved["protocol"],
+        "api_key_tail": api_key[-4:] if len(api_key) >= 12 else "",
+        "sources": sources,
+        "missing": missing,
+    }
+
+
 def has_configured_model(settings, role: str) -> bool:
     config = resolve_role_config(settings, role)
     return bool(config["api_key"] and config["base_url"] and config["model"])

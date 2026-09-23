@@ -826,6 +826,66 @@ class ModelListResponse(BaseModel):
     message: str = ""
 
 
+class EffectiveModelsRequest(BaseModel):
+    config: ModelConfig
+
+
+class EffectiveRoleModel(BaseModel):
+    role: Literal["vision", "planner"]
+    configured: bool
+    source: Literal["project", "env", "none"]
+    model: str
+    base_url: str
+    protocol: str
+    api_key_tail: str = ""
+    sources: dict[str, Literal["project", "env", "none"]] = Field(default_factory=dict)
+    missing: list[str] = Field(default_factory=list)
+
+
+class EffectiveModelsResponse(BaseModel):
+    # ``model`` is data, not a Pydantic namespace collision.
+    model_config = ConfigDict(protected_namespaces=())
+
+    vision: EffectiveRoleModel
+    planner: EffectiveRoleModel
+
+
+class ModelEnvRole(BaseModel):
+    role: Literal["vision", "planner"]
+    provider: str
+    configured: bool
+    source: Literal["env", "none", "profile"]
+    model: str
+    base_url: str
+    protocol: str
+    api_key_tail: str = ""
+    missing: list[str] = Field(default_factory=list)
+
+
+class ModelEnvProfiles(BaseModel):
+    vision: list[ModelEnvRole] = Field(default_factory=list)
+    planner: list[ModelEnvRole] = Field(default_factory=list)
+
+
+class ModelEnvActive(BaseModel):
+    vision: ModelEnvRole
+    planner: ModelEnvRole
+
+
+class ModelEnvState(BaseModel):
+    active: ModelEnvActive
+    profiles: ModelEnvProfiles
+
+
+class ModelEnvSaveRequest(BaseModel):
+    config: ModelConfig
+    # UI has per-role save buttons. Omitting role preserves the legacy whole-console save.
+    role: Literal["vision", "planner"] | None = None
+
+
+class ModelEnvProfileApplyRequest(BaseModel):
+    provider: str = Field(min_length=1, max_length=64, pattern=r"^[a-z0-9-]+$")
+
 class ProjectState(BaseModel):
     project_id: str
     name: str = "Untitled MechCAD Project"

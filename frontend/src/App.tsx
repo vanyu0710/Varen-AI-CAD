@@ -388,9 +388,9 @@ export default function App() {
     setAssemblyHidden([]);
     setAssemblySelected(null);
     setError("");
+    clearSemanticSelection();
   };
 
-    clearSemanticSelection();
 
   const handleNewProject = async () => {
     // 已有未提交工作（会话或特征）时先确认，避免误清当前项目
@@ -761,12 +761,8 @@ export default function App() {
     setError("");
     setSettingsNotice("");
     try {
-      const sanitized = { ...nextSettings };
-      for (const role of ["vision", "planner"] as const) {
-        const key = `${role}_api_key` as "vision_api_key" | "planner_api_key";
-        if (sanitized[key] === SECRET_MASK) sanitized[key] = "";
-      }
-      const next = await updateProjectSettings(project.project_id, sanitized);
+      // 掩码原样提交：服务端将其解释为“保留已存密钥”；空值才是用户明确清空。
+      const next = await updateProjectSettings(project.project_id, nextSettings);
       replaceProject(next, nextSettings);
       setSettingsDirty(false);
       setSettingsNotice(t("app.settings.saved"));
@@ -1112,6 +1108,7 @@ export default function App() {
         dirty={settingsDirty}
         saving={settingsSaving}
         notice={settingsNotice}
+        projectId={project.project_id}
         startupMode={startupMode}
         onClose={() => setUi({ settingsOpen: false })}
         onChange={onSettingsChange}

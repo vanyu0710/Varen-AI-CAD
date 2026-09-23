@@ -11,6 +11,7 @@ type Props = {
   dirty: boolean;
   saving: boolean;
   notice: string;
+  projectId?: string;
   startupMode: StartupMode;
   onClose: () => void;
   onChange: (value: ModelConfig) => void;
@@ -26,6 +27,7 @@ export default function SettingsDialog({
   dirty,
   saving,
   notice,
+  projectId,
   startupMode,
   onClose,
   onChange,
@@ -196,6 +198,7 @@ export default function SettingsDialog({
                   dirty={dirty}
                   notice={notice}
                   saving={saving}
+                  projectId={projectId}
                 />
               </section>
             )}

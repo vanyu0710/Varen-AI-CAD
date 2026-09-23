@@ -110,9 +110,9 @@ Local storage does not mean offline inference: prompts, attached sketches, and t
 
 ### Windows package
 
-The published Windows package checked on GitHub is **v0.22.1-beta** (about 180 MiB). The source [VERSION](VERSION) is `0.22.1-beta`. See [project status](docs/PROJECT_STATUS.md).
+The published Windows package checked on GitHub is **v0.22.2-beta** (about 180 MiB). The source [VERSION](VERSION) is `0.22.2-beta`. See [project status](docs/PROJECT_STATUS.md).
 
-1. Open the [v0.22.1-beta release](https://github.com/vanyu0710/Varen-AI-CAD/releases/tag/v0.22.1-beta). Download `VarenCAD-win64-0.22.1-beta.zip` and its `.sha256` attachment under **Assets**, not the source-code archives. Run `Get-FileHash .\VarenCAD-win64-0.22.1-beta.zip -Algorithm SHA256` and compare the result with the checksum file.
+1. Open the [v0.22.2-beta release](https://github.com/vanyu0710/Varen-AI-CAD/releases/tag/v0.22.2-beta). Download `VarenCAD-win64-0.22.2-beta.zip` and its `.sha256` attachment under **Assets**, not the source-code archives. Run `Get-FileHash .\VarenCAD-win64-0.22.2-beta.zip -Algorithm SHA256` and compare the result with the checksum file.
 2. Extract the archive and run `VarenCAD.exe`.
 3. Open **Settings → Model** and configure an OpenAI-compatible endpoint.
 4. Try:

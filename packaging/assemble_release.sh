@@ -10,7 +10,7 @@ OUT="release/VarenCAD-win64-$VER"
 rm -rf "$OUT" "$OUT.zip"
 mkdir -p "$OUT"
 
-cp -r dist/VarenCAD/* "$OUT/"
+cp -r ../dist/VarenCAD/* "$OUT/"
 mkdir -p "$OUT/runtime"
 cp -r runtime/python "$OUT/runtime/python"
 cp release_assets/.env.example "$OUT/.env.example"

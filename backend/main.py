@@ -5,9 +5,12 @@ from copy import deepcopy
 import asyncio
 import io
 import json
+import math
 import os
 import platform
+import re
 import threading
+import time
 import zipfile
 from datetime import datetime, timezone
 from pathlib import Path
@@ -17,6 +20,7 @@ from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, Response
 from PIL import Image
+import requests
 
 from backend.ai import (
     apply_chat_edit,
@@ -69,6 +73,7 @@ from backend.schemas import (
     ProcessStep,
     RenameProjectRequest,
     StageEvent,
+    UpdateCheckResponse,
 )
 from backend.model_env_store import apply_model_env_profile, read_active_env, read_profiles, save_model_env
 from backend.mechcad_ai.client import (
@@ -163,6 +168,226 @@ def _emit_from_thread_factory(project_id: str, loop: asyncio.AbstractEventLoop):
 @app.get("/api/health")
 def health() -> dict[str, str]:
     return {"status": "ok", "service": "varen-cad-api", "version": APP_VERSION}
+
+
+# v0.23 phase 1: startup release check. This is deliberately check-only:
+# no automatic download, unzip, file replacement, restart, or installer.
+_UPDATE_DEFAULT_REPO = "vanyu0710/Varen-AI-CAD"
+_UPDATE_REPO_PATTERN = re.compile(r"^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$")
+_UPDATE_VERSION_PATTERN = re.compile(r"^[vV]?(\d+)\.(\d+)\.(\d+)(?:-([0-9A-Za-z.-]+))?$")
+_UPDATE_CHECK_CACHE: dict[str, tuple[float, dict[str, object]]] = {}
+_UPDATE_CHECK_CACHE_LOCK = threading.Lock()
+_UPDATE_NOTES_LIMIT = 800
+
+
+def _parse_update_version(raw: str) -> tuple[tuple[int, int, int], tuple[str, ...]] | None:
+    match = _UPDATE_VERSION_PATTERN.fullmatch((raw or "").strip())
+    if not match:
+        return None
+    release = (int(match.group(1)), int(match.group(2)), int(match.group(3)))
+    prerelease = tuple(part for part in (match.group(4) or "").split(".") if part)
+    return release, prerelease
+
+
+def _compare_update_versions(
+    left: tuple[tuple[int, int, int], tuple[str, ...]],
+    right: tuple[tuple[int, int, int], tuple[str, ...]],
+) -> int:
+    if left[0] != right[0]:
+        return -1 if left[0] < right[0] else 1
+    left_pre, right_pre = left[1], right[1]
+    if not left_pre and not right_pre:
+        return 0
+    # Semver: the release without a prerelease is higher.
+    if not left_pre:
+        return 1
+    if not right_pre:
+        return -1
+    for a, b in zip(left_pre, right_pre):
+        if a == b:
+            continue
+        a_num, b_num = a.isdigit(), b.isdigit()
+        if a_num and b_num:
+            return -1 if int(a) < int(b) else 1
+        if a_num != b_num:
+            return 1 if b_num else -1
+        return -1 if a < b else 1
+    if len(left_pre) == len(right_pre):
+        return 0
+    return -1 if len(left_pre) < len(right_pre) else 1
+
+
+def _update_check_enabled() -> bool:
+    return (os.getenv("MECHCAD_UPDATE_CHECK", "true").strip().lower() not in {"false", "0", "off", "no"})
+
+
+def _update_repo() -> str:
+    repo = (os.getenv("MECHCAD_RELEASE_REPO") or _UPDATE_DEFAULT_REPO).strip()
+    if not _UPDATE_REPO_PATTERN.fullmatch(repo):
+        return _UPDATE_DEFAULT_REPO
+    return repo
+
+
+def _update_channel() -> str:
+    return "stable" if os.getenv("MECHCAD_UPDATE_CHANNEL", "beta").strip().lower() == "stable" else "beta"
+
+
+def _update_timeout() -> float:
+    try:
+        value = float(os.getenv("MECHCAD_UPDATE_TIMEOUT", "4"))
+    except ValueError:
+        return 4.0
+    if not math.isfinite(value):
+        return 4.0
+    return min(10.0, max(1.0, value))
+
+
+def _update_cache_seconds() -> float:
+    try:
+        value = float(os.getenv("MECHCAD_UPDATE_CACHE_SECONDS", "21600"))
+    except ValueError:
+        return 21600.0
+    if not math.isfinite(value):
+        return 21600.0
+    return min(86400.0, max(60.0, value))
+
+
+def _fetch_update_releases(repo: str, timeout: float) -> list[dict[str, object]]:
+    """Fetch public GitHub releases. No credentials or telemetry are attached."""
+
+    response = requests.get(
+        f"https://api.github.com/repos/{repo}/releases?per_page=30",
+        headers={"Accept": "application/vnd.github+json", "User-Agent": "VarenCAD-UpdateCheck"},
+        timeout=timeout,
+    )
+    response.raise_for_status()
+    payload = response.json()
+    if not isinstance(payload, list):
+        raise ValueError("GitHub returned an unexpected release payload")
+    return [item for item in payload if isinstance(item, dict)]
+
+
+def _select_update_release(
+    releases: list[dict[str, object]], channel: str
+) -> tuple[tuple[tuple[int, int, int], tuple[str, ...]], dict[str, object]] | None:
+    selected: tuple[tuple[int, int, int], tuple[str, ...]] | None = None
+    selected_release: dict[str, object] | None = None
+    for release in releases:
+        if release.get("draft") is True:
+            continue
+        if channel == "stable" and release.get("prerelease") is True:
+            continue
+        tag = str(release.get("tag_name") or "")
+        parsed = _parse_update_version(tag)
+        if parsed is None:
+            continue
+        if selected is None or _compare_update_versions(parsed, selected) > 0:
+            selected = parsed
+            selected_release = release
+    if selected is None or selected_release is None:
+        return None
+    return selected, selected_release
+
+
+def _update_assets(release: dict[str, object], version: str) -> list[dict[str, str]]:
+    expected = {f"VarenCAD-win64-{version}.zip", f"VarenCAD-win64-{version}.sha256"}
+    assets = release.get("assets")
+    if not isinstance(assets, list):
+        return []
+    out: list[dict[str, str]] = []
+    for asset in assets:
+        if not isinstance(asset, dict):
+            continue
+        name = str(asset.get("name") or "")
+        url = str(asset.get("browser_download_url") or "")
+        if name in expected and url.startswith(("http://", "https://")):
+            out.append({"name": name, "url": url})
+    return out
+
+
+def _update_response(
+    status: str,
+    current_version: str,
+    channel: str,
+    message: str | None = None,
+    latest_version: str | None = None,
+    update_available: bool = False,
+    release_url: str | None = None,
+    release_notes: str | None = None,
+    assets: list[dict[str, str]] | None = None,
+) -> dict[str, object]:
+    return UpdateCheckResponse(
+        status=status,
+        current_version=current_version,
+        latest_version=latest_version,
+        update_available=update_available,
+        channel=channel,
+        release_url=release_url,
+        release_notes=release_notes,
+        checked_at=datetime.now(timezone.utc).isoformat(),
+        message=message,
+        assets=assets or [],
+    ).model_dump()
+
+
+def _check_update_sync(force: bool) -> dict[str, object]:
+    current_version = APP_VERSION.strip()
+    current_parsed = _parse_update_version(current_version)
+    channel = _update_channel()
+    if not _update_check_enabled():
+        return _update_response("disabled", current_version, channel, "Update checks are disabled.")
+    if current_parsed is None:
+        return _update_response("unavailable", current_version, channel, "Current application version cannot be parsed.")
+
+    repo = _update_repo()
+    cache_key = f"{repo}|{channel}|{current_version}"
+    ttl = _update_cache_seconds()
+    with _UPDATE_CHECK_CACHE_LOCK:
+        cached = _UPDATE_CHECK_CACHE.get(cache_key)
+        if not force and cached is not None and time.monotonic() - cached[0] < ttl:
+            return cached[1]
+
+        try:
+            releases = _fetch_update_releases(repo, _update_timeout())
+        except (requests.RequestException, ValueError):
+            # Network/rate-limit failures must not block or interrupt modeling.
+            return _update_response(
+                "unavailable", current_version, channel, "GitHub releases are temporarily unavailable."
+            )
+
+        selected = _select_update_release(releases, channel)
+        if selected is None:
+            result = _update_response(
+                "ok", current_version, channel, "No versioned release is available for this channel."
+            )
+        else:
+            parsed, release = selected
+            latest_version = f"{parsed[0][0]}.{parsed[0][1]}.{parsed[0][2]}"
+            if parsed[1]:
+                latest_version += "-" + ".".join(parsed[1])
+            update_available = _compare_update_versions(parsed, current_parsed) > 0
+            notes = str(release.get("body") or "").strip()[:_UPDATE_NOTES_LIMIT]
+            release_url = str(release.get("html_url") or "") or None
+            result = _update_response(
+                "ok",
+                current_version,
+                channel,
+                latest_version=latest_version,
+                update_available=update_available,
+                release_url=release_url,
+                release_notes=notes or None,
+                assets=_update_assets(release, latest_version),
+            )
+        if result["status"] == "ok":
+            _UPDATE_CHECK_CACHE[cache_key] = (time.monotonic(), result)
+        return result
+
+
+@app.get("/api/update/check", response_model=UpdateCheckResponse)
+async def check_update(force: bool = False) -> dict[str, object]:
+    """Check GitHub releases without installing anything; failures degrade quietly."""
+
+    return await asyncio.to_thread(_check_update_sync, force)
 
 
 DIAG_LOG_TAIL_BYTES = 400_000

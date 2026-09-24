@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import ApprovalPanel from "./ApprovalPanel";
@@ -12,7 +12,10 @@ const base: Approval = {
   message: "即将删除特征 F_0001，是否继续？",
 };
 
-function renderPanel(approvals: Approval[] = [base], onResolve = vi.fn()) {
+type ResolveApprovalFn = (approval: Approval, action: "approve" | "reject" | "edit", argsOverride?: Record<string, unknown>) => void;
+const onResolveDefault = vi.fn((approval: Approval, action: "approve" | "reject" | "edit", argsOverride?: Record<string, unknown>) => ({ approval, action, argsOverride }));
+
+function renderPanel(approvals: Approval[] = [base], onResolve: ResolveApprovalFn = onResolveDefault) {
   return render(<ApprovalPanel approvals={approvals} busy={false} onResolve={onResolve} />);
 }
 
@@ -165,5 +168,69 @@ describe("ApprovalPanel", () => {
     renderPanel([plan]);
     expect(screen.queryByText("零件清单")).not.toBeInTheDocument();
     expect(screen.getByText("建底板")).toBeInTheDocument();
+  });
+});
+describe("ApprovalPanel decision UX", () => {
+  it("shows ask_user progress and a clear required-answer reason", async () => {
+    const user = userEvent.setup();
+    const ask: Approval = {
+      ...base,
+      kind: "ask_user",
+      op: "ask_user",
+      message: "确认建模参数",
+      options: {
+        questions: [
+          { id: "q1", question: "孔径？", type: "single", options: [{ label: "6mm" }, { label: "8mm" }], required: true },
+          { id: "q2", question: "备注？", type: "text", required: true },
+        ],
+      },
+    };
+    renderPanel([ask]);
+    expect(screen.getByText("已回答 0/2")).toBeInTheDocument();
+    expect(screen.getByText("还有 2 个必答问题未完成")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "提交答案" })).toBeDisabled();
+    await user.click(screen.getByText("6mm"));
+    expect(screen.getByText("已回答 1/2")).toBeInTheDocument();
+    expect(screen.getByText("还有 1 个必答问题未完成")).toBeInTheDocument();
+  });
+
+  it("renders typed parameter controls and keeps original JSON types", async () => {
+    const user = userEvent.setup();
+    const approval: Approval = {
+      ...base,
+      args: { diameter: 10.5, count: 2, keep: true, params: { depth: 5 }, feature_id: "F_0001" },
+    };
+    renderPanel([approval]);
+    await user.click(screen.getByRole("button", { name: "改参" }));
+    const diameter = screen.getByLabelText("diameter");
+    expect(diameter).toHaveAttribute("type", "number");
+    await user.clear(diameter);
+    await user.type(diameter, "12.5");
+    expect(screen.getByLabelText("keep")).toHaveValue("true");
+    expect(screen.getByLabelText("params")).toBeInstanceOf(HTMLTextAreaElement);
+    await user.click(screen.getByRole("button", { name: "确认改参" }));
+    expect(onResolveDefault).toHaveBeenCalledWith(approval, "edit", {
+      diameter: 12.5,
+      count: 2,
+      keep: true,
+      params: { depth: 5 },
+      feature_id: "F_0001",
+    });
+  });
+
+  it("blocks invalid JSON and shows the reason", async () => {
+    const user = userEvent.setup();
+    const approval: Approval = { ...base, args: { params: { depth: 5 } } };
+    renderPanel([approval]);
+    await user.click(screen.getByRole("button", { name: "改参" }));
+    const input = screen.getByLabelText("params");
+    await user.clear(input);
+    fireEvent.change(input, { target: { value: '{ "depth": ' } });
+    fireEvent.blur(input);
+    expect(screen.getByText("请输入有效 JSON")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "确认改参" })).toBeDisabled();
+    await user.click(screen.getByRole("button", { name: "恢复原值" }));
+    expect(screen.queryByText("请输入有效 JSON")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "确认改参" })).toBeEnabled();
   });
 });

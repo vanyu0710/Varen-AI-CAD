@@ -3,6 +3,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import {
   artifactUrl,
   assemblyArtifactUrl,
+  checkForUpdate,
   createProject,
   deleteProject,
   deleteKernelFeature,
@@ -32,12 +33,14 @@ import {
   type ProjectState,
   type SemanticPick,
   type SemanticSelection,
+  type UpdateCheck,
 } from "./api";
 import type { MeasureResult } from "./measureTool";
 import ApprovalPanel from "./ApprovalPanel";
 import ChatColumn from "./layout/ChatColumn";
 import StructurePanel from "./layout/StructurePanel";
 import TopCommandBar from "./layout/TopCommandBar";
+import UpdateBanner from "./UpdateBanner";
 import SettingsDialog from "./SettingsDialog";
 import StartupScreen from "./StartupScreen";
 import Viewport, { type AssemblyModel } from "./Viewport";
@@ -123,6 +126,8 @@ export default function App() {
   const bootRef = useRef(false);
   const chatInputRef = useRef<HTMLTextAreaElement>(null);
   const [planMode, setPlanMode] = useState(false);
+  const [updateCheck, setUpdateCheck] = useState<UpdateCheck | null>(null);
+  const [updateDismissed, setUpdateDismissed] = useState(false);
   const language = useAppStore((state) => state.language);
 
   /** 统一发送入口：空闲=开新任务；运行中=插话。首条消息携带草图图片。 */
@@ -510,6 +515,21 @@ export default function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // Startup release check is non-intrusive: a network failure never becomes a UI error.
+  useEffect(() => {
+    let cancelled = false;
+    checkForUpdate()
+      .then((result) => {
+        if (!cancelled) setUpdateCheck(result);
+      })
+      .catch(() => {
+        // Deliberately quiet: modeling remains fully usable when GitHub is unavailable.
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   useEffect(() => {
     if (!project?.project_id) {
       return;
@@ -711,6 +731,7 @@ export default function App() {
       url: assemblyArtifactUrl(project.project_id, p.library_stl_file),
       position: p.pose?.position ?? [0, 0, 0],
       rotationDeg: p.pose?.rotation_deg ?? null,
+      rotationMatrix: p.pose?.rotation_matrix ?? null,
       // v0.19：材质标识（后端 manifest 权威，缺失时视口按零件名回退推断）
       material: p.material ?? undefined,
       color: p.material_color ?? undefined,
@@ -898,6 +919,12 @@ export default function App() {
         onRenameProject={renameCurrentProject}
         onBackToStart={() => setShowStartup(true)}
         onOpenSettings={() => setUi({ settingsOpen: true })}
+      />
+
+      <UpdateBanner
+        update={updateCheck}
+        dismissed={updateDismissed}
+        onDismiss={() => setUpdateDismissed(true)}
       />
 
       {error && (

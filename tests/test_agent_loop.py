@@ -1492,14 +1492,30 @@ class AssemblyFlowTests(unittest.TestCase):
     def test_normalize_bom_pose(self) -> None:
         from backend.agent.loop import _normalize_bom
 
+        matrix_90z = [[0.0, -1.0, 0.0], [1.0, 0.0, 0.0], [0.0, 0.0, 1.0]]
         bom = _normalize_bom([
             {"part": "a", "pose": {"position": [1, 2, 3], "rotation_deg": [90, [0, 0, 1]]}},
-            {"part": "b", "pose": {"position": ["x", 0, 0]}},   # 非法 → pose=None
-            {"part": "c"},                                       # 无 pose → None
+            {"part": "b", "pose": {"position": [4, 5, 6], "rotation_matrix": matrix_90z}},
+            {"part": "c", "pose": {"position": ["x", 0, 0]}},   # 非法 → pose=None
+            {"part": "d", "pose": {"position": [7, 8, 9],
+                                   "rotation_matrix": matrix_90z,
+                                   "rotation_deg": [90, [0, 0, 1]]}},  # 二选一
+            {"part": "e", "pose": {"position": [7, 8, 9],
+                                   "rotation_matrix": [[1, 0, 0], [0, 1, 0], [0, 0, -1]]}},  # 反射
+            {"part": "f", "pose": {"position": [7, 8, 9],
+                                   "rotation_deg": ["bad", [0, 0, 1]]}},  # 非法角度
+            {"part": "g", "pose": {"position": [7, 8, 9],
+                                   "rotation_deg": [90, [0, 0, 0]]}},  # 零轴
+            {"part": "h"},                                       # 无 pose → None
         ])
         self.assertEqual(bom[0]["pose"], {"position": [1.0, 2.0, 3.0], "rotation_deg": [90.0, [0.0, 0.0, 1.0]]})
-        self.assertIsNone(bom[1]["pose"])
+        self.assertEqual(bom[1]["pose"], {"position": [4.0, 5.0, 6.0], "rotation_matrix": matrix_90z})
         self.assertIsNone(bom[2]["pose"])
+        self.assertIsNone(bom[3]["pose"])
+        self.assertIsNone(bom[4]["pose"])
+        self.assertIsNone(bom[5]["pose"])
+        self.assertIsNone(bom[6]["pose"])
+        self.assertIsNone(bom[7]["pose"])
 
     def test_finish_part_writes_project_library_and_manifest(self) -> None:
         from backend import storage
@@ -1554,6 +1570,243 @@ class AssemblyFlowTests(unittest.TestCase):
             finally:
                 storage.PROJECT_PARTS_ROOT = orig_root
         self.assertTrue(result.ok)
+
+    def _housing_deadlock_setup(self, root: Path) -> None:
+        from backend import storage
+
+        lib_dir = storage.project_parts_dir("engine-deadlock")
+        lib_dir.mkdir(parents=True)
+        (lib_dir / "v001_crankcase.step").write_text("old crankcase", encoding="utf-8")
+        (lib_dir / "v001_crankcase.stl").write_bytes(b"old crankcase mesh")
+        (lib_dir / "v001_cylinder.step").write_text("cylinder", encoding="utf-8")
+        storage.write_manifest("engine-deadlock", {"parts": [
+            {"name": "crankcase", "version": 1, "status": "active",
+             "step_file": "v001_crankcase.step", "stl_file": "v001_crankcase.stl",
+             "volume_mm3": 10000.0, "fingerprint": "sha256:old"},
+            {"name": "cylinder", "version": 1, "status": "active",
+             "step_file": "v001_cylinder.step", "stl_file": "v001_cylinder.stl"},
+        ], "assembly": None})
+
+    def _housing_worker(self, *, audit_ok: bool) -> "HousingAuditWorker":
+        class HousingAuditWorker(FakeWorker):
+            def __init__(self) -> None:
+                super().__init__([{"success": True, "value": 15150.0},
+                                  {"success": True, "value": 1}])
+                self.validation_result = {
+                    "success": True,
+                    "geometry_validation": {"valid": True, "status": "valid", "reason_codes": [],
+                                            "fingerprint": "sha256:new-transient"},
+                }
+                self.audit_payloads: list[list[dict]] = []
+
+            def housing_brief(self, parts, **_kwargs) -> dict:
+                return {"ok": True, "required_cavity": [0, 0, 0, 200, 100, 100]}
+
+            def audit_housing(self, parts, *, brief=None, **_kwargs) -> dict:
+                self.audit_payloads.append([dict(p) for p in parts])
+                if not audit_ok:
+                    return {"ok": False, "summary": "当前几何审计失败",
+                            "checks": [{"id": "layout", "status": "FAIL", "detail": "当前几何内腔不足"}]}
+                return {"ok": True, "summary": "当前壳体审计通过",
+                        "checks": [{"id": "layout", "status": "PASS", "detail": "transient 几何"}]}
+
+        return HousingAuditWorker()
+
+    def test_housing_rework_audits_transient_geometry_and_versions_atomically(self) -> None:
+        """同名壳体返工必须审计 transient 几何，并原子提交 v2。"""
+        from backend import storage
+
+        worker = self._housing_worker(audit_ok=True)
+        calls = {"n": 0}
+        tool_payloads: list[dict] = []
+
+        def chat(messages, tools):
+            calls["n"] += 1
+            if calls["n"] == 1:
+                return _round_with_call("finish_part", {"part": "crankcase"})
+            tool_payloads.append(json.loads([m for m in messages if m.get("role") == "tool"][-1]["content"]))
+            return ToolCallRound(text="完成", tool_calls=[])
+
+        with tempfile.TemporaryDirectory() as td:
+            orig_root = storage.PROJECT_PARTS_ROOT
+            storage.PROJECT_PARTS_ROOT = Path(td) / "project_parts"
+            try:
+                self._housing_deadlock_setup(Path(td))
+                run_dir = Path(td) / "run"
+                run_dir.mkdir()
+                result = _run(worker, chat, run_dir=run_dir, project_id="engine-deadlock")
+
+                self.assertTrue(tool_payloads[0]["success"], tool_payloads[0])
+                housing_payloads = [p for p in worker.audit_payloads[0] if p["name"] == "crankcase"]
+                self.assertEqual(len(housing_payloads), 1)
+                self.assertIn("_audit_crankcase.step", housing_payloads[0]["path"])
+                self.assertNotIn("project_parts", Path(housing_payloads[0]["path"]).parts)
+
+                manifest = storage.read_manifest("engine-deadlock")
+                entry = [p for p in manifest["parts"] if p["name"] == "crankcase"][0]
+                self.assertEqual(entry["version"], 2)
+                self.assertEqual(entry["status"], "active")
+                self.assertEqual(entry["fingerprint"], "sha256:new-transient")
+                self.assertEqual(entry["fingerprint_source"], "geometry_validation")
+                self.assertEqual(result.parts[0]["library_version"], 2)
+                self.assertTrue((storage.project_parts_dir("engine-deadlock") / "v001_crankcase.step").exists())
+                self.assertTrue((storage.project_parts_dir("engine-deadlock") / entry["step_file"]).exists())
+
+                # 同名再次返工产生明确 v3，不回到 v1，也不重复 active 条目。
+                worker2 = self._housing_worker(audit_ok=True)
+                calls["n"] = 0
+
+                def chat2(messages, tools):
+                    calls["n"] += 1
+                    if calls["n"] == 1:
+                        return _round_with_call("finish_part", {"part": "crankcase"})
+                    return ToolCallRound(text="完成", tool_calls=[])
+
+                with tempfile.TemporaryDirectory() as td2:
+                    _run(worker2, chat2, run_dir=Path(td2), project_id="engine-deadlock")
+                manifest3 = storage.read_manifest("engine-deadlock")
+                crank_entries = [p for p in manifest3["parts"] if p["name"] == "crankcase"]
+                self.assertEqual(len(crank_entries), 1)
+                self.assertEqual(crank_entries[0]["version"], 3)
+                self.assertEqual(crank_entries[0]["status"], "active")
+            finally:
+                storage.PROJECT_PARTS_ROOT = orig_root
+
+    def test_housing_audit_transient_export_failure_blocks_rework(self) -> None:
+        """审计无法读取 transient 几何时必须 FAIL，不能静默跳过硬门。"""
+        from backend import storage
+
+        worker = self._housing_worker(audit_ok=True)
+
+        def fail_audit_export(path: str) -> dict:
+            if "_audit_" in Path(path).name:
+                raise RuntimeError("transient export unavailable")
+            return type(worker).export_step(worker, path)
+
+        worker.export_step = fail_audit_export
+        calls = {"n": 0}
+        tool_payloads: list[dict] = []
+
+        def chat(messages, tools):
+            calls["n"] += 1
+            if calls["n"] == 1:
+                return _round_with_call("finish_part", {"part": "crankcase"})
+            tool_payloads.append(json.loads([m for m in messages if m.get("role") == "tool"][-1]["content"]))
+            return ToolCallRound(text="完成", tool_calls=[])
+
+        with tempfile.TemporaryDirectory() as td:
+            orig_root = storage.PROJECT_PARTS_ROOT
+            storage.PROJECT_PARTS_ROOT = Path(td) / "project_parts"
+            try:
+                self._housing_deadlock_setup(Path(td))
+                run_dir = Path(td) / "run"
+                run_dir.mkdir()
+                _run(worker, chat, run_dir=run_dir, project_id="engine-deadlock")
+
+                payload = tool_payloads[0]
+                self.assertFalse(payload["success"])
+                self.assertEqual(payload["error_kind"], "HOUSING_AUDIT_FAILED")
+                self.assertEqual(payload["previous_revision"], 1)
+                self.assertEqual(payload["current_revision"], 2)
+                self.assertEqual(payload["fingerprint"], "sha256:new-transient")
+                self.assertFalse(payload["audit_inputs"]["uses_transient_geometry"])
+                self.assertIn("transient export unavailable", payload["error"])
+
+                manifest = storage.read_manifest("engine-deadlock")
+                entry = [p for p in manifest["parts"] if p["name"] == "crankcase"][0]
+                self.assertEqual(entry["version"], 1)
+                self.assertEqual(worker.reset_calls, 0)
+            finally:
+                storage.PROJECT_PARTS_ROOT = orig_root
+
+    def test_housing_audit_failure_reports_revision_and_fingerprint_source(self) -> None:
+        """审计失败不换版，但必须说明目标 revision 与指纹来源。"""
+        from backend import storage
+
+        worker = self._housing_worker(audit_ok=False)
+        calls = {"n": 0}
+        tool_payloads: list[dict] = []
+
+        def chat(messages, tools):
+            calls["n"] += 1
+            if calls["n"] == 1:
+                return _round_with_call("finish_part", {"part": "crankcase"})
+            tool_payloads.append(json.loads([m for m in messages if m.get("role") == "tool"][-1]["content"]))
+            return ToolCallRound(text="完成", tool_calls=[])
+
+        with tempfile.TemporaryDirectory() as td:
+            orig_root = storage.PROJECT_PARTS_ROOT
+            storage.PROJECT_PARTS_ROOT = Path(td) / "project_parts"
+            try:
+                self._housing_deadlock_setup(Path(td))
+                run_dir = Path(td) / "run"
+                run_dir.mkdir()
+                _run(worker, chat, run_dir=run_dir, project_id="engine-deadlock")
+
+                payload = tool_payloads[0]
+                self.assertFalse(payload["success"])
+                self.assertEqual(payload["error_kind"], "HOUSING_AUDIT_FAILED")
+                self.assertEqual(payload["previous_revision"], 1)
+                self.assertEqual(payload["current_revision"], 2)
+                self.assertEqual(payload["fingerprint"], "sha256:new-transient")
+                self.assertEqual(payload["fingerprint_source"], "geometry_validation")
+                self.assertTrue(payload["audit_inputs"]["uses_transient_geometry"])
+                self.assertTrue(any(c["status"] == "FAIL" for c in payload["audit"]["checks"]))
+
+                manifest = storage.read_manifest("engine-deadlock")
+                entry = [p for p in manifest["parts"] if p["name"] == "crankcase"][0]
+                self.assertEqual(entry["version"], 1)
+                self.assertEqual(entry["fingerprint"], "sha256:old")
+                self.assertEqual(worker.reset_calls, 0)
+            finally:
+                storage.PROJECT_PARTS_ROOT = orig_root
+
+    def test_library_commit_failure_preserves_active_version_and_session(self) -> None:
+        """库提交失败不覆盖 v1，也不清空当前建模会话。"""
+        from unittest.mock import patch
+
+        from backend import storage
+
+        worker = self._housing_worker(audit_ok=True)
+        calls = {"n": 0}
+        tool_payloads: list[dict] = []
+
+        def chat(messages, tools):
+            calls["n"] += 1
+            if calls["n"] == 1:
+                return _round_with_call("finish_part", {"part": "crankcase"})
+            tool_payloads.append(json.loads([m for m in messages if m.get("role") == "tool"][-1]["content"]))
+            return ToolCallRound(text="完成", tool_calls=[])
+
+        with tempfile.TemporaryDirectory() as td:
+            orig_root = storage.PROJECT_PARTS_ROOT
+            storage.PROJECT_PARTS_ROOT = Path(td) / "project_parts"
+            try:
+                self._housing_deadlock_setup(Path(td))
+                with patch.object(storage, "write_manifest", side_effect=OSError("disk full")):
+                    run_dir = Path(td) / "run"
+                    run_dir.mkdir()
+                    _run(worker, chat, run_dir=run_dir, project_id="engine-deadlock")
+
+                payload = tool_payloads[0]
+                self.assertFalse(payload["success"])
+                self.assertEqual(payload["error_kind"], "PART_LIBRARY_COMMIT_FAILED")
+                self.assertEqual(payload["previous_revision"], 1)
+                self.assertEqual(payload["current_revision"], 2)
+                self.assertEqual(payload["fingerprint"], "sha256:new-transient")
+                self.assertEqual(payload["fingerprint_source"], "geometry_validation")
+                self.assertIn("disk full", payload["error"])
+
+                manifest = storage.read_manifest("engine-deadlock")
+                entries = [p for p in manifest["parts"] if p["name"] == "crankcase"]
+                self.assertEqual(entries[0]["version"], 1)
+                self.assertEqual(entries[0]["fingerprint"], "sha256:old")
+                self.assertEqual(entries[0]["status"], "active")
+                self.assertTrue((storage.project_parts_dir("engine-deadlock") / "v001_crankcase.step").exists())
+                self.assertFalse((storage.project_parts_dir("engine-deadlock") / "v002_crankcase.step").exists())
+                self.assertEqual(worker.reset_calls, 0)
+            finally:
+                storage.PROJECT_PARTS_ROOT = orig_root
 
     def test_export_assembly_gates(self) -> None:
         worker = FakeWorker()

@@ -132,7 +132,12 @@ export default function ChatColumn({
         </details>
       )}
 
-      {pendingApprovals && pendingApprovals.length > 0 && onResolveApproval && (
+      {((pendingApprovals?.length ?? 0) > 0 && onResolveApproval) || questions.length > 0 ? (
+        <div className="chat-decision-banner" role="status">
+          <span aria-hidden="true">●</span>
+          {t("chat.decision.pending", { count: ((onResolveApproval ? pendingApprovals?.length ?? 0 : 0) + questions.length) })}
+        </div>
+      ) : null}      {pendingApprovals && pendingApprovals.length > 0 && onResolveApproval && (
         <div className="chat-column-approvals">
           <ApprovalPanel approvals={pendingApprovals} busy={busy} onResolve={onResolveApproval} />
         </div>

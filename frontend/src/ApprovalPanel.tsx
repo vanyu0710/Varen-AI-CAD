@@ -8,6 +8,56 @@ type Props = {
   onResolve: (approval: Approval, action: "approve" | "reject" | "edit", argsOverride?: Record<string, unknown>) => void;
 };
 
+type DraftValue =
+  | { ok: true; value: unknown }
+  | { ok: false };
+
+function valueKind(value: unknown): "number" | "boolean" | "json" | "text" {
+  if (typeof value === "number") return "number";
+  if (typeof value === "boolean") return "boolean";
+  if (value !== null && (Array.isArray(value) || typeof value === "object")) return "json";
+  return "text";
+}
+
+function draftText(value: unknown): string {
+  if (valueKind(value) === "json") return JSON.stringify(value, null, 2) ?? "";
+  if (value === null || value === undefined) return "";
+  return String(value);
+}
+
+function parseDraft(original: unknown, raw: string): DraftValue {
+  const trimmed = raw.trim();
+  if (!trimmed) return { ok: true, value: undefined };
+  const kind = valueKind(original);
+  if (kind === "number") {
+    const parsed = Number(trimmed);
+    return Number.isFinite(parsed) ? { ok: true, value: parsed } : { ok: false };
+  }
+  if (kind === "boolean") {
+    if (trimmed === "true") return { ok: true, value: true };
+    if (trimmed === "false") return { ok: true, value: false };
+    return { ok: false };
+  }
+  if (kind === "json") {
+    try {
+      const parsed = JSON.parse(trimmed) as unknown;
+      if (Array.isArray(original) !== Array.isArray(parsed)) return { ok: false };
+      if (!Array.isArray(original) && (typeof parsed !== "object" || parsed === null || Array.isArray(parsed))) return { ok: false };
+      return { ok: true, value: parsed };
+    } catch {
+      return { ok: false };
+    }
+  }
+  return { ok: true, value: trimmed };
+}
+
+function draftErrorKey(kind: "number" | "boolean" | "json" | "text"): string | null {
+  if (kind === "number") return "approval.args.invalid_number";
+  if (kind === "boolean") return "approval.args.invalid_boolean";
+  if (kind === "json") return "approval.args.invalid_json";
+  return null;
+}
+
 /**
  * 人机协作审批卡：破坏性操作/破坏性修复走通用 approve/edit/reject；
  * ask_user 渲染结构化问题卡片（单选/多选/自由文本 + 自动"其他"）。
@@ -15,17 +65,49 @@ type Props = {
 export default function ApprovalPanel({ approvals, busy, onResolve }: Props) {
   const t = useT();
   const [drafts, setDrafts] = useState<Record<string, Record<string, string>>>({});
+  const [draftErrors, setDraftErrors] = useState<Record<string, Record<string, string>>>({});
 
   if (approvals.length === 0) {
     return null;
   }
 
+  const clearDraft = (approvalId: string) => {
+    setDrafts((s) => {
+      const next = { ...s };
+      delete next[approvalId];
+      return next;
+    });
+    setDraftErrors((s) => {
+      const next = { ...s };
+      delete next[approvalId];
+      return next;
+    });
+  };
+
+  const updateDraft = (approvalId: string, key: string, value: string) => {
+    setDrafts((s) => ({ ...s, [approvalId]: { ...(s[approvalId] ?? {}), [key]: value } }));
+    setDraftErrors((s) => {
+      const current = s[approvalId] ?? {};
+      if (!current[key]) return s;
+      return { ...s, [approvalId]: { ...current, [key]: "" } };
+    });
+  };
+
+  const validateDraft = (approval: Approval, key: string): string | null => {
+    const original = (approval.args ?? {})[key];
+    const raw = drafts[approval.approval_id]?.[key] ?? "";
+    const kind = valueKind(original);
+    const parsed = parseDraft(original, raw);
+    return parsed.ok ? null : (draftErrorKey(kind) ?? "");
+  };
+
   const startEdit = (approval: Approval) => {
     const draft: Record<string, string> = {};
     for (const [key, value] of Object.entries(approval.args ?? {})) {
-      draft[key] = String(value ?? "");
+      draft[key] = draftText(value);
     }
     setDrafts((s) => ({ ...s, [approval.approval_id]: draft }));
+    setDraftErrors((s) => ({ ...s, [approval.approval_id]: {} }));
   };
 
   return (
@@ -42,8 +124,10 @@ export default function ApprovalPanel({ approvals, busy, onResolve }: Props) {
             ? t("approval.kind.fix")
             : t("approval.kind.destructive");
         const draft = drafts[approval.approval_id];
+        const errors = draftErrors[approval.approval_id] ?? {};
         const isEditing = Boolean(draft);
         const argText = JSON.stringify(approval.args ?? {}, null, 0);
+        const hasErrors = Object.values(errors).some(Boolean);
         return (
           <div className="approval-card" key={approval.approval_id}>
             <div className="approval-head">
@@ -57,47 +141,86 @@ export default function ApprovalPanel({ approvals, busy, onResolve }: Props) {
             </details>
             {isEditing && draft ? (
               <div className="approval-edit">
-                {Object.entries(draft).map(([key, value]) => (
-                  <label className="approval-edit-field" key={key}>
-                    <span>{key}</span>
-                    <input
-                      type="text"
-                      value={value}
-                      onChange={(e) => setDrafts((s) => ({ ...s, [approval.approval_id]: { ...draft, [key]: e.target.value } }))}
-                    />
-                  </label>
-                ))}
+                {Object.entries(draft).map(([key, value]) => {
+                  const original = (approval.args ?? {})[key];
+                  const kind = valueKind(original);
+                  const error = errors[key];
+                  return (
+                    <label className={`approval-edit-field kind-${kind}${error ? " has-error" : ""}`} key={key}>
+                      <span>{key}</span>
+                      {kind === "json" ? (
+                        <textarea
+                          rows={Math.min(6, Math.max(2, value.split("\n").length))}
+                          value={value}
+                          aria-invalid={Boolean(error)}
+                          onChange={(e) => updateDraft(approval.approval_id, key, e.target.value)}
+                          onBlur={() => {
+                            const message = validateDraft(approval, key);
+                            setDraftErrors((s) => ({ ...s, [approval.approval_id]: { ...(s[approval.approval_id] ?? {}), [key]: message ?? "" } }));
+                          }}
+                        />
+                      ) : kind === "boolean" ? (
+                        <select
+                          value={value}
+                          aria-invalid={Boolean(error)}
+                          onChange={(e) => updateDraft(approval.approval_id, key, e.target.value)}
+                          onBlur={() => {
+                            const message = validateDraft(approval, key);
+                            setDraftErrors((s) => ({ ...s, [approval.approval_id]: { ...(s[approval.approval_id] ?? {}), [key]: message ?? "" } }));
+                          }}
+                        >
+                          <option value="">—</option>
+                          <option value="true">true</option>
+                          <option value="false">false</option>
+                        </select>
+                      ) : (
+                        <input
+                          type={kind === "number" ? "number" : "text"}
+                          step={kind === "number" ? "any" : undefined}
+                          value={value}
+                          aria-invalid={Boolean(error)}
+                          onChange={(e) => updateDraft(approval.approval_id, key, e.target.value)}
+                          onBlur={() => {
+                            const message = validateDraft(approval, key);
+                            setDraftErrors((s) => ({ ...s, [approval.approval_id]: { ...(s[approval.approval_id] ?? {}), [key]: message ?? "" } }));
+                          }}
+                        />
+                      )}
+                      {error ? <small className="approval-edit-error">{t(error)}</small> : null}
+                    </label>
+                  );
+                })}
                 <div className="approval-edit-actions">
                   <button
                     type="button"
-                    disabled={busy}
+                    disabled={busy || hasErrors}
                     onClick={() => {
+                      const nextErrors: Record<string, string> = {};
                       const override: Record<string, unknown> = {};
                       for (const [key, value] of Object.entries(draft)) {
-                        const num = Number(value);
-                        override[key] = value.trim() === "" ? undefined : Number.isFinite(num) ? num : value;
+                        const original = (approval.args ?? {})[key];
+                        const parsed = parseDraft(original, value);
+                        if (!parsed.ok) {
+                          nextErrors[key] = draftErrorKey(valueKind(original)) ?? "";
+                          continue;
+                        }
+                        override[key] = parsed.value;
+                      }
+                      const invalidCount = Object.keys(nextErrors).length;
+                      if (invalidCount) {
+                        setDraftErrors((s) => ({ ...s, [approval.approval_id]: nextErrors }));
+                        return;
                       }
                       onResolve(approval, "edit", override);
-                      setDrafts((s) => {
-                        const next = { ...s };
-                        delete next[approval.approval_id];
-                        return next;
-                      });
+                      clearDraft(approval.approval_id);
                     }}
                   >
                     {t("approval.confirm_edit")}
                   </button>
-                  <button
-                    type="button"
-                    disabled={busy}
-                    onClick={() =>
-                      setDrafts((s) => {
-                        const next = { ...s };
-                        delete next[approval.approval_id];
-                        return next;
-                      })
-                    }
-                  >
+                  <button type="button" disabled={busy} onClick={() => startEdit(approval)}>
+                    {t("approval.args.restore_original")}
+                  </button>
+                  <button type="button" disabled={busy} onClick={() => clearDraft(approval.approval_id)}>
                     {t("common.cancel")}
                   </button>
                 </div>
@@ -131,6 +254,10 @@ function normalizeQuestions(approval: Approval, t: (k: string) => string): AskQu
   }
   const legacy = String(approval.message || "");
   return [{ id: "q1", question: legacy || t("approval.question.fallback"), type: "text", allowFreeText: true, required: true }];
+}
+
+function isAnswered(value: string | string[] | undefined): boolean {
+  return Array.isArray(value) ? value.length > 0 : Boolean(value && String(value).trim());
 }
 
 function AskUserCard({
@@ -173,16 +300,17 @@ function AskUserCard({
     return out;
   };
 
-  const allRequiredAnswered = questions.every((q) => {
-    if (q.required === false) return true;
-    const val = finalAnswers()[q.id];
-    return Array.isArray(val) ? val.length > 0 : Boolean(val && String(val).trim());
-  });
+  const final = finalAnswers();
+  const answeredCount = questions.filter((q) => isAnswered(final[q.id])).length;
+  const missingRequired = questions.filter((q) => q.required !== false && !isAnswered(final[q.id])).length;
+  const allRequiredAnswered = missingRequired === 0;
 
   return (
-    <div className="approval-card ask-card">
-      <div className="approval-head">
+    <div className="approval-card ask-card decision-card">
+      <div className="approval-head decision-head">
         <span className="approval-kind">{t("approval.kind.ask")}</span>
+        <strong className="decision-title">{t("approval.question.needs_answer")}</strong>
+        <span className="decision-progress">{t("approval.question.progress", { answered: answeredCount, total: questions.length })}</span>
       </div>
       {questions.map((q) => {
         const allowFree = q.allowFreeText !== false;
@@ -201,7 +329,7 @@ function AskUserCard({
                 onChange={(e) => setAnswers((a) => ({ ...a, [q.id]: e.target.value }))}
               />
             ) : (
-              <div className="ask-options">
+              <div className={`ask-options${q.type === "single" ? " ask-options-single" : ""}`} role={q.type === "single" ? "radiogroup" : "group"} aria-label={q.question}>
                 {(q.options || []).map((opt) => {
                   const checked =
                     q.type === "multi"
@@ -216,7 +344,7 @@ function AskUserCard({
                         onChange={() => (q.type === "multi" ? toggleMulti(q.id, opt.label) : setSingle(q.id, opt.label))}
                       />
                       <span className="ask-option-label">
-                        {opt.label}
+                        <span className="ask-option-title">{opt.label}</span>
                         {opt.description && <em className="ask-option-desc">{opt.description}</em>}
                       </span>
                     </label>
@@ -239,6 +367,11 @@ function AskUserCard({
           </div>
         );
       })}
+      {missingRequired > 0 && (
+        <p className="decision-hint" aria-live="polite">
+          {t("approval.question.missing_required", { count: missingRequired })}
+        </p>
+      )}
       <div className="approval-actions">
         <button
           type="button"

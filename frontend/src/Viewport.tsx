@@ -34,6 +34,7 @@ export type AssemblyModel = {
   url: string;
   position?: number[] | null;
   rotationDeg?: [number, number[]] | null;
+  rotationMatrix?: number[][] | null;
   /** v0.19：材质键（内核推断，后端 manifest 写入）；缺失时按零件名回退。 */
   material?: string | null;
   /** v0.19：材质基色 [r,g,b]（0..1）；缺失时用材质表色。 */
@@ -681,8 +682,22 @@ export default function Viewport({
             if (Array.isArray(position) && position.length === 3) {
               mesh.position.set(position[0], position[1], position[2]);
             }
+            const matrix = entry.rotationMatrix;
+            let rotationApplied = false;
+            if (Array.isArray(matrix) && matrix.length === 3
+                && matrix.every((row) => Array.isArray(row) && row.length === 3
+                  && row.every((value) => Number.isFinite(value)))) {
+              const rotation4 = new THREE.Matrix4().set(
+                matrix[0][0], matrix[0][1], matrix[0][2], 0,
+                matrix[1][0], matrix[1][1], matrix[1][2], 0,
+                matrix[2][0], matrix[2][1], matrix[2][2], 0,
+                0, 0, 0, 1,
+              );
+              mesh.quaternion.setFromRotationMatrix(rotation4);
+              rotationApplied = true;
+            }
             const rotation = entry.rotationDeg;
-            if (Array.isArray(rotation) && rotation.length === 2
+            if (!rotationApplied && Array.isArray(rotation) && rotation.length === 2
                 && Array.isArray(rotation[1]) && rotation[1].length === 3) {
               const axis = new THREE.Vector3(rotation[1][0], rotation[1][1], rotation[1][2]);
               if (axis.lengthSq() > 1e-9) {

@@ -239,6 +239,25 @@ export type ModelEnvState = {
   active: ModelEnvActive;
   profiles: ModelEnvProfiles;
 };
+
+
+export type UpdateAsset = {
+  name: string;
+  url: string;
+};
+
+export type UpdateCheck = {
+  status: "ok" | "disabled" | "unavailable";
+  current_version: string;
+  latest_version?: string | null;
+  update_available: boolean;
+  channel: "stable" | "beta";
+  release_url?: string | null;
+  release_notes?: string | null;
+  checked_at: string;
+  message?: string | null;
+  assets: UpdateAsset[];
+};
 export type SemanticTrianglesDisplayMesh = {
   type: "triangles";
   vertices: [number, number, number][];
@@ -426,6 +445,13 @@ export function resolveWsRoot(env: any = (import.meta as any).env, apiRoot: stri
   return `${window.location.protocol === "https:" ? "wss" : "ws"}://${window.location.host}`;
 }
 
+/** v0.23 phase 1: check-only release lookup. The UI never downloads or installs an update. */
+export async function checkForUpdate(force = false): Promise<UpdateCheck> {
+  const query = force ? "?force=true" : "";
+  const response = await fetch(`${API_ROOT}/api/update/check${query}`);
+  return parseResponse<UpdateCheck>(response);
+}
+
 export async function createProject(name = "Varen CAD Project") {
   const response = await fetch(`${API_ROOT}/api/projects`, {
     method: "POST",
@@ -567,6 +593,7 @@ export type PartArtifact = {
 export type AssemblyPose = {
   position: number[];
   rotation_deg?: [number, number[]] | null;
+  rotation_matrix?: number[][] | null;
 };
 
 export type InterferencePair = {

@@ -18,14 +18,17 @@ loop 调 worker RPC 执行，把精简后的 StepResult 作为工具结果回喂
 from __future__ import annotations
 
 import base64
+import hashlib
 import inspect
 import json
 import math
+import os
 import re
 import shutil
 import threading
 from dataclasses import dataclass, field
 from pathlib import Path
+from uuid import uuid4
 from typing import Any, Callable
 
 from backend.agent.approvals import ApprovalBroker
@@ -35,6 +38,18 @@ from backend.mechcad_ai.client import ApiCallError, ToolCall, ToolCallRound, too
 
 ToolFn = Callable[..., ToolCallRound]
 EmitFn = Callable[[str, str, dict[str, Any]], None]
+
+
+class PartLibraryCommitError(RuntimeError):
+    """项目零件库 active revision 提交失败；旧 manifest 必须保持可用。"""
+
+    def __init__(self, message: str, *, revision: int, fingerprint: str,
+                 fingerprint_source: str, cause: Exception | None = None) -> None:
+        super().__init__(message)
+        self.revision = revision
+        self.fingerprint = fingerprint
+        self.fingerprint_source = fingerprint_source
+        self.cause = cause
 
 _VALUE_MAX_ITEMS = 40
 _VALUE_MAX_STR = 1500
@@ -253,9 +268,59 @@ def _normalize_plan_steps(raw: Any) -> list[dict[str, Any]]:
     return steps
 
 
-def _normalize_pose(raw: Any) -> dict[str, Any] | None:
-    """BOM pose 规范化：position=[x,y,z] 有限数；rotation_deg=[angle,[ax,ay,az]]。
+def _normalize_rotation_matrix(raw: Any) -> list[list[float]] | None:
+    """规范化 3x3 proper rotation matrix；支持嵌套 3x3 或 9 元素 row-major。"""
+    if not isinstance(raw, (list, tuple)):
+        return None
+    if len(raw) == 9:
+        source = [list(raw[index:index + 3]) for index in (0, 3, 6)]
+    elif len(raw) == 3 and all(isinstance(row, (list, tuple)) and len(row) == 3 for row in raw):
+        source = [list(row) for row in raw]
+    else:
+        return None
+    try:
+        matrix = [[float(value) for value in row] for row in source]
+    except (TypeError, ValueError):
+        return None
+    if not all(math.isfinite(value) for row in matrix for value in row):
+        return None
+    for index, row in enumerate(matrix):
+        if abs(math.sqrt(sum(value * value for value in row)) - 1.0) > 1e-6:
+            return None
+    for i in range(3):
+        for j in range(i + 1, 3):
+            if abs(sum(matrix[i][k] * matrix[j][k] for k in range(3))) > 1e-6:
+                return None
+    determinant = (
+        matrix[0][0] * (matrix[1][1] * matrix[2][2] - matrix[1][2] * matrix[2][1])
+        - matrix[0][1] * (matrix[1][0] * matrix[2][2] - matrix[1][2] * matrix[2][0])
+        + matrix[0][2] * (matrix[1][0] * matrix[2][1] - matrix[1][1] * matrix[2][0])
+    )
+    if abs(determinant - 1.0) > 1e-6:
+        return None
+    return matrix
 
+
+def _normalize_rotation_deg(raw: Any) -> list[Any] | None:
+    """Normalize `[angle_deg, [ax, ay, az]]`; return None for malformed input."""
+    if not isinstance(raw, (list, tuple)) or len(raw) != 2:
+        return None
+    try:
+        angle = float(raw[0])
+        axis = [float(value) for value in raw[1]]
+    except (TypeError, ValueError, IndexError):
+        return None
+    if (len(axis) != 3 or not math.isfinite(angle)
+            or not all(math.isfinite(value) for value in axis)
+            or not any(abs(value) > 1e-12 for value in axis)):
+        return None
+    return [angle, axis]
+
+
+def _normalize_pose(raw: Any) -> dict[str, Any] | None:
+    """BOM pose 规范化：position + rotation_deg 或 rotation_matrix（二选一）。
+
+    rotation_deg=[angle,[ax,ay,az]]；rotation_matrix 是 3x3 proper rotation。
     非法 pose 返回 None（丢字段不整体拒绝，审批卡可见缺位姿）。"""
     if not isinstance(raw, dict):
         return None
@@ -270,15 +335,20 @@ def _normalize_pose(raw: Any) -> dict[str, Any] | None:
         return None
     out: dict[str, Any] = {"position": pos}
     rotation = raw.get("rotation_deg")
-    if isinstance(rotation, (list, tuple)) and len(rotation) == 2:
-        try:
-            angle = float(rotation[0])
-            axis = [float(v) for v in rotation[1]]
-        except (TypeError, ValueError, IndexError):
-            return out
-        if (math.isfinite(angle) and len(axis) == 3 and all(math.isfinite(v) for v in axis)
-                and any(abs(v) > 1e-9 for v in axis)):
-            out["rotation_deg"] = [angle, axis]
+    rotation_matrix = raw.get("rotation_matrix")
+    if rotation is not None and rotation_matrix is not None:
+        return None
+    if rotation_matrix is not None:
+        normalized_matrix = _normalize_rotation_matrix(rotation_matrix)
+        if normalized_matrix is None:
+            return None
+        out["rotation_matrix"] = normalized_matrix
+        return out
+    if rotation is not None:
+        normalized_rotation = _normalize_rotation_deg(rotation)
+        if normalized_rotation is None:
+            return None
+        out["rotation_deg"] = normalized_rotation
     return out
 
 
@@ -543,8 +613,9 @@ def _propose_plan_tool() -> dict[str, Any]:
                                 "pose": {
                                     "type": "object",
                                     "description": (
-                                        "装配位姿（多零件任务必填）：position=[x,y,z] mm 世界坐标、"
-                                        "rotation_deg=[角度,[ax,ay,az]] 可选；数值应来自 design_calculate "
+                                        "装配位姿（多零件任务必填）：position=[x,y,z] mm 世界坐标；"
+                                        "rotation_deg=[角度,[ax,ay,az]] 或 rotation_matrix=3x3 正交旋转矩阵"
+                                        "（二选一，先旋转后平移）；数值应来自 design_calculate "
                                         "调研（中心距/轴长/凸台位置），全部零件以此摆进装配。"
                                     ),
                                 },
@@ -1610,53 +1681,105 @@ class AgentLoop:
         return {str(b.get("part")) for b in self._bom_items() if b.get("part")}
 
     def _archive_to_parts_library(self, part: str, step_path: Path, stl_path: Path,
-                                  volume: float) -> dict[str, Any] | None:
-        """v0.14 F2a：把本次归档复制进项目零件库（版本递增）并更新 manifest + session 镜像。
+                                  volume: float,
+                                  validation_info: dict[str, Any]) -> dict[str, Any] | None:
+        """把当前 transient 零件提交为项目库下一个 active revision。
 
-        失败只记日志——run 目录归档仍是事实，装配导出会明确报缺件。"""
+        提交顺序：先在库目录完整 staged -> 原子换入版本化文件 -> 原子写 manifest。
+        任何一步失败都清理本次 vNNN 产物并抛 PartLibraryCommitError；旧 active
+        revision 的文件与 manifest 不会被覆盖。
+        """
         if not self.project_id:
             return None
         from backend import storage
 
+        manifest = storage.read_manifest(self.project_id)
+        entries = [p for p in manifest.get("parts") or [] if isinstance(p, dict)]
+        version = max(
+            (int(p.get("version") or 0) for p in entries if p.get("name") == part),
+            default=0,
+        ) + 1
+        slug = _part_slug(part)
+        lib_dir = storage.project_parts_dir(self.project_id)
+        lib_dir.mkdir(parents=True, exist_ok=True)
+        lib_step = f"v{version:03d}_{slug}.step"
+        lib_stl = f"v{version:03d}_{slug}.stl"
+        final_step = lib_dir / lib_step
+        final_stl = lib_dir / lib_stl
+        token = uuid4().hex
+        staged_step = lib_dir / f".{lib_step}.{token}.tmp"
+        staged_stl = lib_dir / f".{lib_stl}.{token}.tmp"
+
+        validation_fingerprint = str(validation_info.get("fingerprint") or "")
+        if validation_fingerprint:
+            fingerprint = validation_fingerprint
+            fingerprint_source = "geometry_validation"
+        else:
+            digest = hashlib.sha256(step_path.read_bytes()).hexdigest()
+            fingerprint = f"sha256:{digest}"
+            fingerprint_source = "step_file_sha256"
+
+        bom_item = self._bom_entry(part) or {}
+        from backend.agent.materials import material_color, resolve_material
+        entry = {
+            "name": part, "version": version, "run_id": self.run_dir.name,
+            "step_file": lib_step, "stl_file": lib_stl,
+            "built_via": self._part_built_via, "volume_mm3": round(float(volume), 2),
+            "pose": bom_item.get("pose"),
+            "contract_passed": True,
+            "role": bom_item.get("role") or "",
+            "depends_on": bom_item.get("depends_on") or [],
+            "material": resolve_material(part),
+            "material_color": material_color(part),
+            "fingerprint": fingerprint,
+            "fingerprint_source": fingerprint_source,
+            "validation_status": str(validation_info.get("status") or ""),
+            "validation_reason_codes": list(validation_info.get("reason_codes") or []),
+            "status": "active",
+        }
+
         try:
-            manifest = storage.read_manifest(self.project_id)
-            entries = [p for p in manifest.get("parts") or [] if isinstance(p, dict)]
-            existing = next((p for p in entries if p.get("name") == part), None)
-            version = int((existing or {}).get("version") or 0) + 1
-            slug = _part_slug(part)
-            lib_dir = storage.project_parts_dir(self.project_id)
-            lib_dir.mkdir(parents=True, exist_ok=True)
-            lib_step = f"v{version:03d}_{slug}.step"
-            lib_stl = f"v{version:03d}_{slug}.stl"
-            shutil.copyfile(step_path, lib_dir / lib_step)
-            shutil.copyfile(stl_path, lib_dir / lib_stl)
-            bom_item = self._bom_entry(part) or {}
-            from backend.agent.materials import material_color, resolve_material
-            entry = {
-                "name": part, "version": version, "run_id": self.run_dir.name,
-                "step_file": lib_step, "stl_file": lib_stl,
-                "built_via": self._part_built_via, "volume_mm3": round(float(volume), 2),
-                "pose": bom_item.get("pose"),
-                "contract_passed": True,
-                "role": bom_item.get("role") or "",
-                "depends_on": bom_item.get("depends_on") or [],
-                # v0.19：材质标识（供 UI 视口按材质着色；权威规则在内核 materials.py）
-                "material": resolve_material(part),
-                "material_color": material_color(part),
-                # v2.17 P1-7 生命周期：active 才进装配；同名返工替换条目，
-                # 被替换的旧版本文件保留在库目录（历史可回溯）但不再 active。
-                "status": "active",
-            }
+            shutil.copyfile(step_path, staged_step)
+            shutil.copyfile(stl_path, staged_stl)
+            # 先换入新版本文件，最后原子更新 manifest。失败时 manifest 仍指向旧
+            # active revision；新文件会被清理，不会形成半提交条目。
+            os.replace(staged_step, final_step)
+            os.replace(staged_stl, final_stl)
             manifest["parts"] = [p for p in entries if p.get("name") != part] + [entry]
             storage.write_manifest(self.project_id, manifest)
+        except Exception as exc:  # noqa: BLE001 —— 必须保留旧 active revision
+            for staged in (staged_step, staged_stl):
+                try:
+                    staged.unlink(missing_ok=True)
+                except OSError:
+                    pass
+            # manifest 未提交成功时清理孤立新文件；若替换/写 manifest 前已崩溃，
+            # 孤立文件也不会被 manifest 引用，不影响 active revision。
+            if not any(p.get("name") == part and p.get("version") == version
+                       for p in storage.read_manifest(self.project_id).get("parts") or []):
+                for final in (final_step, final_stl):
+                    try:
+                        final.unlink(missing_ok=True)
+                    except OSError:
+                        pass
+            raise PartLibraryCommitError(
+                f"零件库 v{version} 提交失败: {type(exc).__name__}: {exc}",
+                revision=version, fingerprint=fingerprint,
+                fingerprint_source=fingerprint_source, cause=exc,
+            ) from exc
+
+        try:
             if self.session is not None:
                 self.session.update_part_entry(entry)
-            return {"version": version, "step_file": lib_step, "stl_file": lib_stl,
-                    "pose": entry["pose"], "material": entry["material"],
-                    "material_color": entry["material_color"]}
-        except Exception as exc:  # noqa: BLE001 —— 库写失败不阻断逐件交付
-            self.logs.append(f"零件库写入失败（不影响 run 归档）: {type(exc).__name__}: {exc}")
-            return None
+        except Exception as exc:  # noqa: BLE001 —— manifest 已提交，会话镜像失败只记日志
+            self.logs.append(f"零件库会话镜像更新失败: {type(exc).__name__}: {exc}")
+
+        return {
+            "version": version, "step_file": lib_step, "stl_file": lib_stl,
+            "pose": entry["pose"], "material": entry["material"],
+            "material_color": entry["material_color"],
+            "fingerprint": fingerprint, "fingerprint_source": fingerprint_source,
+        }
 
     def _handle_export_assembly(self, tool_call: ToolCall, result: AgentLoopResult) -> dict[str, Any]:
         """合成工具 export_assembly：零件库 + 位姿 → 装配 STEP + 干涉 + 预览图 + 交付报告。"""
@@ -1995,47 +2118,81 @@ class AgentLoop:
                         f"（外凸台不计为孔；贯通/盲以拓扑分类为准）")
         return violations
 
-    def _audit_housing_gate(self, current_name: str | None = None,
-                            current_geometry: Any = None) -> dict | None:
-        """v0.18：对"待归档壳体 + 项目库内部件"跑设计审计。
+    def _audit_housing_gate(self, current_name: str | None = None) -> dict | None:
+        """对待归档壳体 + 项目库内部件跑设计审计。
 
-        v0.18.1 修复：待归档零件此刻尚未入库（finish_part 先审计后归档），
-        必须把当前导出几何一并纳入，否则审计只看到内部件 → 误报"没有壳体零件"。
-        库不可读/审计通道异常 → 返回 None（不阻断，记日志）。
+        v0.22.3 修复：同名壳体返工时，库内旧版本只是历史几何，不能作为审计对象。
+        审计必须读取当前 worker 会话导出的 transient STEP；旧 active 条目被排除。
+        当前 transient 几何导出失败时必须显式 FAIL，不能静默绕过硬门。
         """
         from backend import storage
+
+        def failure(detail: str, exc: Exception | None = None, *,
+                    previous_revision: int = 0, transient_step: str = "") -> dict:
+            suffix = f": {type(exc).__name__}: {exc}" if exc is not None else ""
+            self.logs.append(f"壳体审计失败{suffix}")
+            return {
+                "ok": False,
+                "summary": "当前提交几何无法完成壳体审计",
+                "checks": [{"id": "housing_audit_input", "status": "FAIL",
+                            "detail": detail + suffix}],
+                "_audit_inputs": {
+                    "uses_transient_geometry": False,
+                    "transient_step": transient_step,
+                    "excluded_library_revision": previous_revision or None,
+                },
+            }
 
         try:
             manifest = storage.read_manifest(self.project_id or "")
             entries = [p for p in manifest.get("parts") or [] if isinstance(p, dict)]
+            previous_revision = max(
+                (int(p.get("version") or 0) for p in entries
+                 if p.get("name") == current_name),
+                default=0,
+            )
             lib_dir = storage.project_parts_dir(self.project_id or "").resolve()
             payload = []
             for e in entries:
+                # 同名旧 revision 只是历史几何，返工审计必须排除，防止读旧缓存指纹。
+                if current_name and e.get("name") == current_name:
+                    continue
                 sf = str(e.get("step_file") or "")
                 if sf and (lib_dir / sf).exists():
                     payload.append({"path": str(lib_dir / sf), "name": str(e.get("name")),
                                     "pose": e.get("pose") or {"position": [0.0, 0.0, 0.0]}})
-            # 当前待归档壳体尚未入库：把内核里的当前几何导出到临时 STEP 供审计
-            if current_name and not any(p["name"] == current_name for p in payload):
+
+            transient_step = ""
+            if current_name:
                 tmp = self.run_dir / f"_audit_{_part_slug(current_name)}.step"
                 try:
                     self.worker.export_step(str(tmp))
                     if tmp.exists():
-                        payload.append({"path": str(tmp), "name": current_name,
-                                        "pose": {"position": [0.0, 0.0, 0.0]}})
+                        transient_step = str(tmp)
                 except Exception as exc:  # noqa: BLE001
-                    self.logs.append(f"壳体审计临时导出失败: {type(exc).__name__}: {exc}")
-            if len(payload) < 2:
+                    return failure("当前 transient 壳体导出失败", exc,
+                                   previous_revision=previous_revision)
+                if not transient_step:
+                    return failure("当前 transient 壳体导出结果不存在", None,
+                                   previous_revision=previous_revision)
+                payload.append({"path": transient_step, "name": current_name,
+                                "pose": {"position": [0.0, 0.0, 0.0]}})
+
+            # 无 current_name 是旧调用形态：没有足够对象时保持原有跳过行为。
+            # 有 current_name 时即使只有当前壳体也执行审计，绝不因为排除旧版而绕过。
+            if not current_name and len(payload) < 2:
                 return None
-            # 简报由内部件反推，供审计做"内腔是否过松"的判据
             internals = [p for p in payload if not _is_housing_name(p["name"])]
-            brief = None
-            if internals:
-                brief = self.worker.housing_brief(internals)
+            brief = self.worker.housing_brief(internals) if internals else None
             report = self.worker.audit_housing(payload, brief=brief)
             self.logs.append(f"壳体审计: {report.get('summary')}")
+            report["_audit_inputs"] = {
+                "uses_transient_geometry": bool(current_name and transient_step),
+                "transient_step": transient_step,
+                "excluded_library_revision": previous_revision or None,
+            }
             return report
-        except Exception as exc:  # noqa: BLE001 —— 审计通道异常不阻断归档
+        except Exception as exc:  # noqa: BLE001 —— 保持旧审计通道的兼容跳过行为
             self.logs.append(f"壳体审计跳过: {type(exc).__name__}: {exc}")
             return None
 
@@ -2056,8 +2213,8 @@ class AgentLoop:
             return {"success": False, "error_kind": "INVALID_REQUEST",
                     "error": "当前内核会话没有零件几何（上一次 finish_part 已清空会话）。"
                              "请先把该零件建模完成再调用 finish_part。"}
-        # 1b) v0.13 设计复检门（DSH L1 review 的 CAD 化）：单实体契约。
-        # "齿悬浮/特征未连接"这类设计性缺陷 validate_geometry 查不出，这里机器拦截。
+
+        # 1b) 单实体契约：防止齿悬浮/多实体半成品进入零件库。
         try:
             solid_probe = self.worker.execute("query", {"target": "_current_geometry", "what": "solid_count"})
             solids = solid_probe.get("value") if solid_probe.get("success") else None
@@ -2068,8 +2225,8 @@ class AgentLoop:
                     "error": f"设计复检未通过：当前零件有 {solids} 个独立实体（期望 1 个），"
                              "疑似特征未连接/存在悬浮体。请修复几何（fuse 或移除多余实体）"
                              "后再调用 finish_part。"}
-        # 1c) v0.13 特征契约校验：断言的关键孔/圆柱面数量必须实测吻合，
-        # 否则拒绝归档——防 undo 回滚掉特征后仍谎报完成。
+
+        # 1c) 特征契约：关键孔/圆柱面数量必须实测吻合。
         if contract:
             violations = self._check_feature_contract(contract)
             if violations:
@@ -2077,12 +2234,13 @@ class AgentLoop:
                         "error": "特征契约校验未通过：" + "；".join(violations) +
                                  "。请补齐缺失特征（重新 hole/圆柱）或删除多余特征后重试 finish_part。",
                         "violations": violations}
-        # 1d) v2.16（P0-1）：strict 几何验证门——体积/包围盒/拓扑有效性全过才准归档，
-        # 结果记入零件档案（validation_passed），最终 _finalize 门控据此判任务成败。
+
+        # 1d) strict 几何验证门。fingerprint 来自当前 transient shape 的验证结果，
+        # 后续审计失败/入库失败都用它说明证据来源，不能再落到库内旧版本指纹。
         try:
             vres = self.worker.execute("validate_geometry", {"level": "strict"})
             validation_info = vres.get("geometry_validation") or {}
-        except Exception as exc:  # noqa: BLE001 —— 验证通道异常按未通过处理（保守拒绝）
+        except Exception as exc:  # noqa: BLE001 —— 验证通道异常按未通过处理
             validation_info = {"valid": False, "status": "unknown",
                                "reason_codes": [f"validator_error:{type(exc).__name__}"]}
         validation_passed = (validation_info.get("valid") is True
@@ -2092,20 +2250,34 @@ class AgentLoop:
                     "error": f"strict 几何验证未通过，拒绝归档: {validation_info}。"
                              "请修复几何（检查自交/空体积/无效拓扑）后重试 finish_part。",
                     "geometry_validation": validation_info}
-        # 1e) v0.18 壳体设计审计门（规范第 10 条）：壳体类零件归档前，必须把
-        # 内腔尺寸/轴承座/螺栓边距/可拆性/单实体/布局逐项机器校验通过。
+        fingerprint = str(validation_info.get("fingerprint") or "")
+        fingerprint_source = "geometry_validation" if fingerprint else "unavailable"
+
+        # 1e) 壳体设计审计硬门。返工时排除库内同名旧版本，审计当前 transient 几何。
         if _is_housing_name(part) and self.project_id:
-            # 待归档零件尚未入库，必须单独传入（否则审计只看到内部件 → 误报"没有壳体"）
             audit = self._audit_housing_gate(current_name=part)
             if audit is not None and not audit.get("ok", True):
+                audit_inputs = dict(audit.pop("_audit_inputs", {}) or {})
+                from backend import storage
+                entries = [p for p in storage.read_manifest(self.project_id).get("parts") or []
+                           if isinstance(p, dict) and p.get("name") == part]
+                previous_revision = max((int(p.get("version") or 0) for p in entries), default=0)
                 fails = [c for c in (audit.get("checks") or []) if c.get("status") == "FAIL"]
-                return {"success": False, "error_kind": "HOUSING_AUDIT_FAILED",
-                        "error": "壳体设计审计未通过：" + "；".join(
-                            f"{c['id']}: {c['detail']}" for c in fails) +
-                            "。请按明细修正（内腔由包络反推、螺栓孔留边距、轴承座同轴配对）后重试。",
-                        "audit": audit}
-        # 2) 导出归档（零件级 STEP + STL）
-        # v2.17 P1-7：同名返工原位替换 run 记录（index 稳定），否则追加
+                return {
+                    "success": False,
+                    "error_kind": "HOUSING_AUDIT_FAILED",
+                    "error": "壳体设计审计未通过：" + "；".join(
+                        f"{c.get('id')}: {c.get('detail')}" for c in fails) +
+                             "。请按明细修正（内腔由包络反推、螺栓孔留边距、轴承座同轴配对）后重试。",
+                    "previous_revision": previous_revision,
+                    "current_revision": previous_revision + 1,
+                    "fingerprint": fingerprint,
+                    "fingerprint_source": fingerprint_source,
+                    "audit_inputs": audit_inputs,
+                    "audit": audit,
+                }
+
+        # 2) 导出当前 transient 零件（零件级 STEP + STL）。
         existing_idx = next((p.get("index") for p in result.parts if p.get("part") == part), None)
         idx = int(existing_idx) if existing_idx else len(result.parts) + 1
         slug = _part_slug(part)
@@ -2118,17 +2290,34 @@ class AgentLoop:
             self.logs.append(f"零件 {part} 导出失败: {type(exc).__name__}: {exc}")
             return {"success": False, "error_kind": "WORKER_ERROR",
                     "error": f"零件导出失败: {type(exc).__name__}: {exc}。当前几何仍在，可修正后重试。"}
-        # 3) 清空内核会话（worker reset）
+
+        # 3) 先提交项目零件库，再清空 worker。库提交失败时保留当前会话，
+        # 让用户/agent 可以直接修正或重试，不会丢 transient 几何。
+        try:
+            library = self._archive_to_parts_library(
+                part, step_path, stl_path, volume, validation_info) or {}
+        except PartLibraryCommitError as exc:
+            self.logs.append(str(exc))
+            return {
+                "success": False,
+                "error_kind": "PART_LIBRARY_COMMIT_FAILED",
+                "error": f"{exc}。旧 active revision 已保留，当前建模会话未清空，可重试。",
+                "previous_revision": exc.revision - 1,
+                "current_revision": exc.revision,
+                "fingerprint": exc.fingerprint,
+                "fingerprint_source": exc.fingerprint_source,
+                "reason": str(exc.cause) if exc.cause is not None else "",
+            }
+
+        # 4) 库提交成功后才清空内核会话，开始下一件。
         try:
             self.worker.reset()
         except Exception as exc:  # noqa: BLE001 —— reset 失败必须叫停，防止零件互相融合
             self.logs.append(f"worker reset 失败: {type(exc).__name__}: {exc}")
             return {"success": False, "error_kind": "WORKER_ERROR",
-                    "error": f"零件 {part} 已导出但会话清空失败: {exc}。"
+                    "error": f"零件 {part} 已入库但会话清空失败: {exc}。"
                              "请勿继续建模（会把下一件融合进当前零件），直接向用户报告此问题。"}
-        # 4) 记账 + 事件 + 计划打勾
-        # v0.14 F2a：同步写项目零件库（版本递增 + manifest + session 镜像）
-        library = self._archive_to_parts_library(part, step_path, stl_path, volume) or {}
+
         part_rec = {
             "part": part, "index": idx, "volume_mm3": round(volume, 2),
             "step": str(step_path), "stl": str(stl_path),
@@ -2139,12 +2328,13 @@ class AgentLoop:
             "library_step_file": library.get("step_file"),
             "library_stl_file": library.get("stl_file"),
             "library_version": library.get("version"),
-            # v0.19：材质标识（UI 视口按材质着色）
+            "library_fingerprint": library.get("fingerprint"),
+            "library_fingerprint_source": library.get("fingerprint_source"),
             "material": library.get("material"),
             "material_color": library.get("material_color"),
             "pose": library.get("pose"),
         }
-        self._part_built_via = "ops"  # 下一件默认原子 op
+        self._part_built_via = "ops"
         prior = next((i for i, p in enumerate(result.parts) if p.get("part") == part), None)
         if prior is None:
             result.parts.append(part_rec)

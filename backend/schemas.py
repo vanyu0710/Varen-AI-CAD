@@ -679,6 +679,8 @@ class AssemblyPose(BaseModel):
     position: list[float] = Field(default_factory=lambda: [0.0, 0.0, 0.0])
     # [angle_deg, [ax, ay, az]]，None = 不旋转
     rotation_deg: list | None = None
+    # 3x3 proper rotation matrix；与 rotation_deg 二选一
+    rotation_matrix: list[list[float]] | None = None
 
 
 class InterferencePair(BaseModel):
@@ -824,6 +826,28 @@ class ModelListResponse(BaseModel):
     endpoint: str | None = None
     elapsed_ms: int | None = None
     message: str = ""
+
+
+class UpdateAsset(BaseModel):
+    """Downloadable release asset metadata. The app only links; it never downloads."""
+
+    name: str
+    url: str
+
+
+class UpdateCheckResponse(BaseModel):
+    """Result of a non-intrusive release check. unavailable is a normal degraded state."""
+
+    status: Literal["ok", "disabled", "unavailable"]
+    current_version: str
+    latest_version: str | None = None
+    update_available: bool = False
+    channel: Literal["stable", "beta"]
+    release_url: str | None = None
+    release_notes: str | None = None
+    checked_at: str
+    message: str | None = None
+    assets: list[UpdateAsset] = Field(default_factory=list)
 
 
 class EffectiveModelsRequest(BaseModel):

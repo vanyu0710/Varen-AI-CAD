@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { useState } from "react";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import ModelConfigPanel from "./ModelConfigPanel";
@@ -30,6 +31,28 @@ function renderPanel(overrides: Partial<ModelConfig> = {}, options: { projectId?
       projectId={options.projectId}
     />,
   );
+  return { onChange };
+}
+
+function renderLivePanel(overrides: Partial<ModelConfig> = {}) {
+  const onChange = vi.fn();
+  function LivePanel() {
+    const [settings, setSettings] = useState<ModelConfig>({ ...DEFAULT_SETTINGS, ...overrides });
+    return (
+      <ModelConfigPanel
+        value={settings}
+        onChange={(next) => {
+          setSettings(next);
+          onChange(next);
+        }}
+        onApply={vi.fn()}
+        dirty
+        notice=""
+        saving={false}
+      />
+    );
+  }
+  render(<LivePanel />);
   return { onChange };
 }
 
@@ -256,6 +279,74 @@ describe("ModelConfigPanel (v0.20 console)", () => {
     expect(patched.vision_api_key).toBe("");
     expect(patched.vision_model).toBe("");
     expect(patched.vision_base_url).toBe("");
+  });
+
+  it("lets users type a large token value without clamping each keystroke", async () => {
+    const user = userEvent.setup();
+    const { onChange } = renderLivePanel();
+    await user.click(screen.getAllByText("生成参数")[0]);
+    const input = screen.getAllByLabelText("最大输出 token")[0];
+
+    await user.type(input, "4096");
+
+    const values = onChange.mock.calls.map((call) => (call[0] as ModelConfig).vision_max_tokens);
+    expect(values).toEqual([409, 4096]);
+    expect(values).not.toContain(64);
+    expect(input).toHaveValue(4096);
+  });
+
+  it("keeps an out-of-range draft while typing and clamps it on blur", async () => {
+    const user = userEvent.setup();
+    const { onChange } = renderLivePanel();
+    await user.click(screen.getAllByText("生成参数")[0]);
+    const input = screen.getAllByLabelText("最大输出 token")[0];
+
+    await user.type(input, "1");
+    expect(input).toHaveAttribute("aria-invalid", "true");
+    expect(screen.getByText("范围 64–200000，失焦后自动修正")).toBeInTheDocument();
+    expect(onChange).not.toHaveBeenCalled();
+
+    await user.tab();
+    expect(onChange).toHaveBeenCalledTimes(1);
+    const patched = onChange.mock.calls[0][0] as ModelConfig;
+    expect(patched.vision_max_tokens).toBe(64);
+    expect(input).toHaveValue(64);
+    expect(input).toHaveAttribute("aria-invalid", "false");
+  });
+
+  it("does not commit an invalid integer and restores the last valid value on blur", async () => {
+    const user = userEvent.setup();
+    const { onChange } = renderLivePanel();
+    await user.click(screen.getAllByText("生成参数")[0]);
+    const input = screen.getAllByLabelText("超时（秒）")[0];
+
+    await user.type(input, "12.5");
+    expect(screen.getByText("仅支持整数，失焦后恢复上一个有效值")).toBeInTheDocument();
+
+    await user.tab();
+    const values = onChange.mock.calls.map((call) => (call[0] as ModelConfig).vision_timeout_s);
+    expect(values).not.toContain(12.5);
+    expect(values.at(-1)).toBe(12);
+    expect(input).toHaveValue(12);
+    expect(input).toHaveAttribute("aria-invalid", "false");
+  });
+
+  it("clearing a number or clicking use default returns to the environment default", async () => {
+    const user = userEvent.setup();
+    const { onChange } = renderLivePanel({ vision_max_tokens: 4096 });
+    await user.click(screen.getAllByText("生成参数")[0]);
+    const input = screen.getAllByLabelText("最大输出 token")[0];
+
+    await user.click(screen.getByRole("button", { name: "用默认" }));
+    expect((onChange.mock.calls.at(-1)?.[0] as ModelConfig).vision_max_tokens).toBeNull();
+
+    await user.type(input, "4096");
+    expect((onChange.mock.calls.at(-1)?.[0] as ModelConfig).vision_max_tokens).toBe(4096);
+
+    await user.clear(input);
+    await user.tab();
+    expect((onChange.mock.calls.at(-1)?.[0] as ModelConfig).vision_max_tokens).toBeNull();
+    expect(input).toHaveValue(null);
   });
 
   it("exports JSON with locally typed keys redacted", async () => {

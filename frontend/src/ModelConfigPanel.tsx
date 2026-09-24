@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useId, useMemo, useState } from "react";
 import {
   applyModelEnvProfile,
   fetchEffectiveModels,
@@ -478,9 +478,9 @@ function RoleConsole({
         </summary>
         <div className="param-grid">
           <ParamSlider label={t("model.param.temperature")} value={value[f("temperature")] as number | null | undefined} onChange={(v) => set({ [f("temperature")]: v })} />
-          <ParamNumber label={t("model.param.max_tokens")} value={value[f("max_tokens")] as number | null | undefined} min={64} max={200000} step={64} placeholder="4096" onChange={(v) => set({ [f("max_tokens")]: v })} />
-          <ParamNumber label={t("model.param.timeout")} value={value[f("timeout_s")] as number | null | undefined} min={5} max={600} step={5} placeholder="90" onChange={(v) => set({ [f("timeout_s")]: v })} />
-          <ParamNumber label={t("model.param.retries")} value={value[f("max_retries")] as number | null | undefined} min={0} max={5} step={1} placeholder="1" onChange={(v) => set({ [f("max_retries")]: v })} />
+          <ParamNumber label={t("model.param.max_tokens")} value={value[f("max_tokens")] as number | null | undefined} min={64} max={200000} step={64} integer placeholder="4096" onChange={(v) => set({ [f("max_tokens")]: v })} />
+          <ParamNumber label={t("model.param.timeout")} value={value[f("timeout_s")] as number | null | undefined} min={5} max={600} step={5} integer placeholder="90" onChange={(v) => set({ [f("timeout_s")]: v })} />
+          <ParamNumber label={t("model.param.retries")} value={value[f("max_retries")] as number | null | undefined} min={0} max={5} step={1} integer placeholder="1" onChange={(v) => set({ [f("max_retries")]: v })} />
         </div>
       </details>
 
@@ -664,6 +664,7 @@ function ParamNumber({
   max,
   step,
   placeholder,
+  integer,
   onChange,
 }: {
   label: string;
@@ -672,13 +673,39 @@ function ParamNumber({
   max: number;
   step: number;
   placeholder: string;
+  integer?: boolean;
   onChange: (v: number | null) => void;
 }) {
   const t = useT();
+  const labelId = useId();
+  const errorId = useId();
+  const [draft, setDraft] = useState(value == null ? "" : String(value));
+  const [error, setError] = useState("");
+
+  // External changes (profile switch, “use default”, project load) replace the draft.
+  // A valid draft equals value, so this effect does not interrupt normal typing.
+  useEffect(() => {
+    setDraft(value == null ? "" : String(value));
+    setError("");
+  }, [value]);
+
+  const parsed = Number(draft);
+  const isCompleteNumber = draft.trim() !== "" && Number.isFinite(parsed);
+  const isInvalidInteger = Boolean(integer && isCompleteNumber && !Number.isInteger(parsed));
+
+  const commit = (next: number | null) => {
+    setError("");
+    onChange(next);
+  };
+  const restoreLastValid = () => {
+    setDraft(value == null ? "" : String(value));
+    setError("");
+  };
+
   return (
-    <div className="param-row">
+    <div className={`param-row${error ? " has-error" : ""}`}>
       <span className="param-label">
-        {label}
+        <span id={labelId}>{label}</span>
         <small>{t("model.param.default_of", { value: placeholder })}</small>
       </span>
       <input
@@ -686,13 +713,65 @@ function ParamNumber({
         min={min}
         max={max}
         step={step}
-        value={value ?? ""}
+        value={draft}
         placeholder={placeholder}
+        aria-labelledby={labelId}
+        aria-describedby={error ? errorId : undefined}
+        aria-invalid={Boolean(error)}
         onChange={(event) => {
           const raw = event.target.value;
-          onChange(raw === "" ? null : Math.max(min, Math.min(max, Number(raw))));
+          setDraft(raw);
+          if (raw.trim() === "") {
+            commit(null);
+            return;
+          }
+          const next = Number(raw);
+          if (!Number.isFinite(next)) {
+            setError(t("model.param.invalid"));
+            return;
+          }
+          if (next < min || next > max) {
+            setError(t("model.param.range", { min, max }));
+            return;
+          }
+          if (integer && !Number.isInteger(next)) {
+            setError(t("model.param.integer"));
+            return;
+          }
+          commit(next);
+        }}
+        onBlur={() => {
+          if (draft.trim() === "") {
+            commit(null);
+            return;
+          }
+          if (!Number.isFinite(parsed) || isInvalidInteger) {
+            restoreLastValid();
+            return;
+          }
+          const next = Math.max(min, Math.min(max, parsed));
+          setDraft(String(next));
+          commit(next);
         }}
       />
+      {value != null && (
+        <button
+          type="button"
+          className="param-clear"
+          onClick={() => {
+            setDraft("");
+            setError("");
+            onChange(null);
+          }}
+        >
+          {t("model.param.default")}
+        </button>
+      )}
+      {error && (
+        <span className="param-error" id={errorId} role="alert">
+          {error}
+        </span>
+      )}
     </div>
   );
 }

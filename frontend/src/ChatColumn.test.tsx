@@ -247,3 +247,36 @@ describe("ChatColumn input and reading position", () => {
     expect(onOpenSettings).toHaveBeenCalledTimes(1);
   });
 });
+describe("ChatColumn pending decisions", () => {
+  it("renders a visible banner counting approvals and clarification questions", () => {
+    const approval = {
+      approval_id: "a1",
+      kind: "ask_user" as const,
+      op: "ask_user",
+      args: {},
+      message: "孔径？",
+      options: { questions: [{ id: "q1", question: "孔径？", type: "text", required: true }] },
+    };
+    render(
+      <ChatColumn
+        chat={[]}
+        chatMessage=""
+        busy={false}
+        engineLabel="Worker"
+        pendingApprovals={[approval]}
+        questions={[{ id: "depth", text: "深度？", options: [], required: true }]}
+        imageFile={null}
+        planMode={false}
+        onPlanModeChange={vi.fn()}
+        onResolveApproval={vi.fn()}
+        onClarificationContinue={vi.fn()}
+        onChatMessageChange={vi.fn()}
+        onSendChat={vi.fn()}
+        onImageChange={vi.fn()}
+      />,
+    );
+    expect(screen.getByText("有 2 项决策等待你处理")).toBeInTheDocument();
+    expect(screen.getByText("需要你回答")).toBeInTheDocument();
+    expect(screen.getByText("需要补充建模信息")).toBeInTheDocument();
+  });
+});

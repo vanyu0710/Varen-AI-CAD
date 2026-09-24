@@ -110,9 +110,9 @@ Agent 通过受约束的内核操作和结构化 `StepResult` 反馈工作，不
 
 ### Windows 安装包
 
-本次在 GitHub 核对到的 Windows 安装包是 **v0.22.2-beta**（约 180 MiB）。源码 [VERSION](VERSION) 为 `0.22.2-beta`，详见[项目状态](docs/PROJECT_STATUS.md)。
+本次在 GitHub 核对到的 Windows 安装包是 **v0.22.3-beta**（约 180 MiB）。源码 [VERSION](VERSION) 为 `0.22.3-beta`，详见[项目状态](docs/PROJECT_STATUS.md)。
 
-1. 打开 [v0.22.2-beta 发布页](https://github.com/vanyu0710/Varen-AI-CAD/releases/tag/v0.22.2-beta)，在 **Assets** 中下载 `VarenCAD-win64-0.22.2-beta.zip` 和配套 `.sha256` 文件，不要下载源码压缩包。运行 `Get-FileHash .\VarenCAD-win64-0.22.2-beta.zip -Algorithm SHA256`，将结果与校验文件比较。
+1. 打开 [v0.22.3-beta 发布页](https://github.com/vanyu0710/Varen-AI-CAD/releases/tag/v0.22.3-beta)，在 **Assets** 中下载 `VarenCAD-win64-0.22.3-beta.zip` 和配套 `.sha256` 文件，不要下载源码压缩包。运行 `Get-FileHash .\VarenCAD-win64-0.22.3-beta.zip -Algorithm SHA256`，将结果与校验文件比较。
 2. 解压并运行 `VarenCAD.exe`。
 3. 打开 **设置 → 模型**，配置一个 OpenAI 兼容端点。
 4. 试运行：

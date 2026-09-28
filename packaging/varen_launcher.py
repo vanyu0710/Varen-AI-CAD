@@ -29,7 +29,7 @@ def app_dir() -> Path:
 
 
 def kernel_repo_dir() -> Path:
-    return app_dir().parents[1] / "mechcad-kernel"
+    return app_dir().parent / "mechcad-kernel"
 
 
 def run_kernel() -> int:

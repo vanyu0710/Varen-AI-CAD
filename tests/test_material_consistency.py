@@ -14,7 +14,7 @@ from pathlib import Path
 from backend.agent.materials import MATERIAL_BASE, material_color, resolve_material
 
 KERNEL_MATERIALS = (
-    Path(__file__).resolve().parents[2].parent / "mechcad-kernel" / "mech_kernel" / "materials.py"
+    Path(__file__).resolve().parents[1].parent / "mechcad-kernel" / "mech_kernel" / "materials.py"
 )
 
 SAMPLE_NAMES = [

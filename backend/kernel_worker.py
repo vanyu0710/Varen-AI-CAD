@@ -23,7 +23,7 @@ from pathlib import Path
 from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
-DEFAULT_KERNEL_REPO = ROOT.parents[1] / "mechcad-kernel"
+DEFAULT_KERNEL_REPO = ROOT.parent / "mechcad-kernel"
 # 常规 op 超时；重操作（导出/渲染/装配）用 HEAVY_TIMEOUT。
 # 旧值 120s 会让大零件导出（数千面）触发超时，且旧实现超时后读端可能
 # 永久阻塞（Windows 上 kill 后 readline 不一定返回）——已改读线程+队列。
@@ -90,7 +90,7 @@ class KernelWorkerClient:
                 text=True,
                 encoding="utf-8",
                 env=env,
-                windowsHide=True,
+                creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
             )
         env["PYTHONPATH"] = str(self.kernel_repo) + os.pathsep + env.get("PYTHONPATH", "")
         return subprocess.Popen(

@@ -1,3 +1,12 @@
+## v0.22.4-beta - 自动更新、可靠导出与 Windows 启动修复 (2026-09-29)
+
+- **用户确认后的自动更新**：更新检查发现新 Release 后仅在用户点击更新时下载 ZIP 与 SHA256；哈希校验通过才进入 staging，不覆盖运行中的程序，保留 `work/` 与本地 `.env`，支持取消与回滚，完成后提示重启，不做静默后台更新或强制重启。
+- **STEP/STP/STL 导出链路修复**：`.stp` 作为 STEP 别名输出标准 `ISO-10303` 内容；顶层 STEP/STL、逐件产物、装配 STEP 与报告只在真实文件存在时启用，中文文件名 URL 编码并保留下载名。
+- **专业式另存为**：支持 File System Access API 的浏览器可修改建议文件名并选择保存路径，数据流式写入；用户取消不写文件，不支持的浏览器回退普通下载。
+- **Windows kernel worker 启动修复**：修正同级 MechKernel 目录解析，启动前检查内核入口，打包模式使用 `CREATE_NO_WINDOW` 替代无效的 `windowsHide` 参数，缺失时返回明确的 `KERNEL_REPO_MISSING`。
+- **复杂建模诊断与壳体审计**：审计使用当前 transient 几何与 BOM pose，按 BOM 依赖过滤 internals；装配干涉结果展示逐对证据与计算错误，修复螺栓孔边距误判。
+- **质量门禁**：frontend 168、backend 522（3 项平台跳过）、kernel 509 全部通过；`compileall`、benchmark dry-run 与前端 production build 通过。
+
 ## v0.22.3-beta - 装配刚体变换、决策体验与更新检查 (2026-09-24)
 
 - **零件版本提交一致性**：修复 `finish_part` 反复读取旧缓存指纹导致的换版死锁；提交审计始终使用当前 transient shape，成功后几何、指纹、版本与元数据原子入库，失败不覆盖旧版本，装配默认使用 active revision。

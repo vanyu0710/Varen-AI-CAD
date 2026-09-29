@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { artifactUrl, assemblyArtifactUrl, fetchGeometryTopology, isStaleApprovalError, measureTopology, resolveApiRoot, resolveWsRoot, selectGeometryAtPoint, withStrippedKeyMasks, type SemanticPick } from "./api";
+import { artifactUrl, assemblyArtifactUrl, fetchGeometryTopology, isStaleApprovalError, measureTopology, resolveApiRoot, resolveWsRoot, saveArtifactAs, selectGeometryAtPoint, withStrippedKeyMasks, type SemanticPick } from "./api";
 import { DEFAULT_SETTINGS } from "./store";
 import type { ModelConfig } from "./api";
 
@@ -27,12 +27,61 @@ describe("assembly artifact urls (v0.14 F2a)", () => {
     expect(assemblyArtifactUrl("p1", null)).toBe("");
   });
 
-  it("artifactUrl still supports dynamic part kinds", () => {
+  it("artifactUrl still supports and encodes dynamic part kinds", () => {
     expect(artifactUrl("r1", "part_01_gear.step")).toBe("/api/artifacts/r1/part_01_gear.step");
+    expect(artifactUrl("r1", "part_01_小齿轮.stl"))
+      .toBe(`/api/artifacts/r1/${encodeURIComponent("part_01_小齿轮.stl")}`);
     expect(artifactUrl(undefined, "step")).toBe("");
   });
 });
 
+describe("save artifact as (v0.23 export UX)", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    delete (window as any).showSaveFilePicker;
+  });
+
+  it("streams the artifact to a user-selected path and suggested filename", async () => {
+    const writable = {
+      write: vi.fn().mockResolvedValue(undefined),
+      close: vi.fn().mockResolvedValue(undefined),
+      abort: vi.fn().mockResolvedValue(undefined),
+    };
+    const picker = vi.fn().mockResolvedValue({
+      createWritable: vi.fn().mockResolvedValue(writable),
+    });
+    Object.defineProperty(window, "showSaveFilePicker", { configurable: true, value: picker });
+    const fetchMock = vi.fn().mockResolvedValue(new Response("STEP", { status: 200 }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(saveArtifactAs("/api/artifacts/r1/step", "engine.step"))
+      .resolves.toBe("saved");
+
+    expect(picker).toHaveBeenCalledWith({ suggestedName: "engine.step" });
+    expect(fetchMock).toHaveBeenCalledWith("/api/artifacts/r1/step", { credentials: "same-origin" });
+    expect(writable.write).toHaveBeenCalledTimes(1);
+    expect(writable.close).toHaveBeenCalled();
+  });
+
+  it("does not fetch when the user cancels the save dialog", async () => {
+    const cancel = new DOMException("The user aborted a request.", "AbortError");
+    const picker = vi.fn().mockRejectedValue(cancel);
+    Object.defineProperty(window, "showSaveFilePicker", { configurable: true, value: picker });
+    const fetchMock = vi.fn();
+
+    await expect(saveArtifactAs("/api/artifacts/r1/step", "engine.step"))
+      .resolves.toBe("cancelled");
+
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("keeps the normal browser download when File System Access is unavailable", async () => {
+    const fetchMock = vi.fn();
+    await expect(saveArtifactAs("/api/artifacts/r1/step", "engine.step"))
+      .resolves.toBe("browser-download");
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+});
 describe("same-origin address resolution", () => {
   it("defaults API root to the current origin", () => {
     expect(resolveApiRoot({})).toBe("");

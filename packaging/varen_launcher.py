@@ -13,6 +13,8 @@ from __future__ import annotations
 
 import os
 import sys
+import subprocess
+import json
 import threading
 import time
 import webbrowser
@@ -29,7 +31,7 @@ def app_dir() -> Path:
 
 
 def kernel_repo_dir() -> Path:
-    return app_dir().parents[1] / "mechcad-kernel"
+    return app_dir().parent / "mechcad-kernel"
 
 
 def run_kernel() -> int:
@@ -67,6 +69,68 @@ def _hide_console() -> None:
             ctypes.windll.user32.ShowWindow(hwnd, 0)  # SW_HIDE
     except Exception:
         pass
+
+
+def apply_pending_update(root: Path) -> bool:
+    """Hand a prepared update to the external transaction script, then exit.
+
+    The script never kills VarenCAD. It waits for this process to exit, swaps
+    the staged directory into place with rollback handling and preserves every
+    user file and directory that is not part of the release package.
+    """
+
+    state_path = root / "work" / "update-state.json"
+    if not state_path.is_file():
+        return False
+    try:
+        state = json.loads(state_path.read_text(encoding="utf-8"))
+    except (OSError, ValueError, json.JSONDecodeError):
+        return False
+    if state.get("status") != "ready" or state.get("app_root") != str(root):
+        return False
+    apply_script = Path(str(state.get("apply_script") or ""))
+    staging_root = Path(str(state.get("staging_root") or ""))
+    backup_root = Path(str(state.get("backup_root") or ""))
+    preserve_root = Path(str(state.get("preserve_root") or ""))
+    if not apply_script.is_file() or not staging_root.is_dir():
+        return False
+    try:
+        process_id = int(state.get("process_id"))
+    except (TypeError, ValueError):
+        return False
+
+    state["status"] = "applying"
+    state_path.write_text(json.dumps(state, indent=2), encoding="utf-8")
+    try:
+        flags = subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0
+        subprocess.Popen(
+            [
+                "powershell.exe",
+                "-NoProfile",
+                "-ExecutionPolicy",
+                "Bypass",
+                str(apply_script),
+                "-AppRoot",
+                str(root),
+                "-StagingRoot",
+                str(staging_root),
+                "-BackupRoot",
+                str(backup_root),
+                "-PreserveRoot",
+                str(preserve_root),
+                "-ProcessId",
+                str(process_id),
+                "-ManifestPath",
+                str(state_path),
+            ],
+            close_fds=True,
+            creationflags=flags,
+        )
+    except OSError:
+        state["status"] = "ready"
+        state_path.write_text(json.dumps(state, indent=2), encoding="utf-8")
+        return False
+    return True
 
 
 def run_app() -> int:
@@ -125,6 +189,8 @@ def main() -> int:
         return run_kernel()
     if "--cad-worker" in sys.argv[1:2]:
         return run_cad_worker()
+    if IS_FROZEN and apply_pending_update(app_dir()):
+        return 0
     return run_app()
 
 

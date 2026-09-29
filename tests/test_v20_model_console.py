@@ -16,7 +16,7 @@ from fastapi.testclient import TestClient
 import backend.main as main_module
 from backend import model_env_store
 from backend.mechcad_ai import client as client_module
-from backend.mechcad_ai.client import _extract_model_ids, list_role_models, resolve_role_params, test_model_connection
+from backend.mechcad_ai.client import _extract_model_ids, list_role_models, resolve_role_params, test_model_connection as probe_model_connection
 from backend.schemas import ArtifactSet
 
 FAKE_ARTIFACTS = ArtifactSet(
@@ -169,7 +169,7 @@ class TestModelConnectionDiagnosticsTests(unittest.TestCase):
         settings = _settings()
         response = FakeHTTPResponse({"choices": [{"message": {"content": "OK"}}]})
         with patch.object(client_module.requests, "post", return_value=response):
-            result = test_model_connection(settings, "vision")
+            result = probe_model_connection(settings, "vision")
         self.assertTrue(result["ok"])
         self.assertIsInstance(result["elapsed_ms"], int)
         self.assertEqual(result["echo"], "OK")
@@ -180,7 +180,7 @@ class TestModelConnectionDiagnosticsTests(unittest.TestCase):
         long_text = "x" * 100
         response = FakeHTTPResponse({"choices": [{"message": {"content": long_text}}]})
         with patch.object(client_module.requests, "post", return_value=response):
-            result = test_model_connection(settings, "vision")
+            result = probe_model_connection(settings, "vision")
         self.assertEqual(result["echo"], "x" * 60)
         self.assertTrue(result["echo_truncated"])
 

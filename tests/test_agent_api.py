@@ -13,6 +13,7 @@ from unittest.mock import patch
 os.environ["MECHCAD_STORE_PATH"] = str(Path(tempfile.mkdtemp(prefix="mechcad-agent-test-")) / "projects.json")
 
 import backend.main as main_module
+from backend.kernel_worker import KernelWorkerError
 from fastapi.testclient import TestClient
 
 
@@ -107,6 +108,35 @@ class AgentEndpointTests(unittest.TestCase):
                 settings, stop_event, FakeLoop(), approvals, session=None,
             )
         self.assertTrue(events, "应发布 agent_done 事件")
+
+    def test_thread_runner_preserves_kernel_worker_error_kind(self) -> None:
+        """KERNEL_REPO_MISSING 等结构化错误不能被泛化成 WinError。"""
+        events: list = []
+
+        class FakeLoop:
+            def call_soon_threadsafe(self, fn, *args):
+                events.append(args)
+
+        settings = main_module._project_or_404(self.project_id).settings
+        stop_event = threading.Event()
+        approvals = main_module.ApprovalBroker(timeout=0.2)
+
+        class MissingRepoManager:
+            def get_or_start(self, project_id: str):
+                raise KernelWorkerError("MechKernel repo is missing", kind="KERNEL_REPO_MISSING")
+
+        with patch.object(main_module, "has_configured_model", return_value=True), \
+             patch.object(main_module, "get_worker_manager", return_value=MissingRepoManager()):
+            main_module._run_agent_thread(
+                self.project_id, "测试", None, "zh", 30,
+                settings, stop_event, FakeLoop(), approvals, session=None,
+            )
+
+        self.assertEqual(len(events), 1)
+        event = events[0][0]
+        self.assertEqual(event.type, "agent_done")
+        self.assertIn("[KERNEL_REPO_MISSING]", event.message)
+        self.assertEqual(event.payload["error_kind"], "KERNEL_REPO_MISSING")
 
 
 class AgentMessageSessionTests(unittest.TestCase):
@@ -513,6 +543,23 @@ class PartArtifactContractTests(unittest.TestCase):
         for bad in ("part_02_../../secret.step", "part_02_box.exe", "part_2_box.step", "model.step2"):
             with self.assertRaises(KeyError, msg=bad):
                 artifact_path("run1", bad)
+
+    def test_artifact_endpoint_serves_encoded_unicode_part_filename(self) -> None:
+        """v0.23 回归：中文零件文件名 URL 编码后必须可下载，且保留原文件名。"""
+        from urllib.parse import quote
+
+        client = TestClient(main_module.app)
+        filename = "part_01_小齿轮.stl"
+        with tempfile.TemporaryDirectory() as td:
+            run_dir = Path(td) / "run1"
+            run_dir.mkdir()
+            (run_dir / filename).write_bytes(b"solid varen")
+            with patch("backend.storage.ARTIFACT_ROOT", Path(td)):
+                resp = client.get(f"/api/artifacts/run1/{quote(filename)}")
+            self.assertEqual(resp.status_code, 200, resp.text)
+            self.assertEqual(resp.content, b"solid varen")
+            self.assertIn("content-disposition", {k.lower() for k in resp.headers})
+            self.assertIn(quote(filename), resp.headers.get("content-disposition", ""))
 
     def test_thread_runner_passes_parts_to_artifact_set(self) -> None:
         from backend.agent.loop import AgentLoopResult

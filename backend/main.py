@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import base64
+import hashlib
 from copy import deepcopy
 import asyncio
 import io
@@ -9,8 +10,10 @@ import math
 import os
 import platform
 import re
+import shutil
 import threading
 import time
+import uuid
 import zipfile
 from datetime import datetime, timezone
 from pathlib import Path
@@ -37,7 +40,7 @@ from backend.capabilities import CAPABILITIES, CapabilityValidationError
 from backend.evidence_gate import apply_evidence_gate_result, apply_evidence_resolutions, evaluate_evidence_gate
 from backend.generic_engine import build_execution_report, feature_semantics
 from backend.events import EventBus
-from backend.kernel_worker import get_worker_manager
+from backend.kernel_worker import KernelWorkerError, get_worker_manager
 from backend.process import ProcessRecorder
 from backend.schemas import (
     AgentMessageRequest,
@@ -74,6 +77,8 @@ from backend.schemas import (
     RenameProjectRequest,
     StageEvent,
     UpdateCheckResponse,
+    UpdateInstallRequest,
+    UpdateInstallResponse,
 )
 from backend.model_env_store import apply_model_env_profile, read_active_env, read_profiles, save_model_env
 from backend.mechcad_ai.client import (
@@ -390,6 +395,599 @@ async def check_update(force: bool = False) -> dict[str, object]:
     return await asyncio.to_thread(_check_update_sync, force)
 
 
+# v0.23 phase 2: user-confirmed updates. The service downloads only after an
+# explicit POST, verifies the published SHA256, and stages a transaction. It
+# never overwrites the running executable; the prepared transaction is applied
+# by the launcher after the user manually restarts VarenCAD.
+_UPDATE_JOBS: dict[str, dict[str, object]] = {}
+_UPDATE_JOB_CANCELS: dict[str, threading.Event] = {}
+_UPDATE_JOB_LOCK = threading.Lock()
+_UPDATE_INSTALL_LOCK = threading.Lock()
+_UPDATE_MAX_DOWNLOAD_BYTES = 2 * 1024 * 1024 * 1024
+_UPDATE_MAX_ARCHIVE_FILES = 30_000
+_UPDATE_MAX_UNCOMPRESSED_BYTES = 4 * 1024 * 1024 * 1024
+
+
+class _UpdateCancelled(Exception):
+    pass
+
+
+class _UpdateFailure(Exception):
+    def __init__(self, code: str, message: str) -> None:
+        super().__init__(message)
+        self.code = code
+
+
+def _utc_now() -> str:
+    return datetime.now(timezone.utc).isoformat()
+
+
+def _public_update_job(job: dict[str, object]) -> dict[str, object]:
+    return UpdateInstallResponse(
+        job_id=str(job["job_id"]),
+        status=str(job["status"]),
+        version=str(job["version"]),
+        current_version=str(job["current_version"]),
+        message=str(job.get("message") or ""),
+        error_code=job.get("error_code"),
+        started_at=str(job["started_at"]),
+        updated_at=str(job["updated_at"]),
+    ).model_dump()
+
+
+def _set_update_job(job_id: str, **fields: object) -> None:
+    with _UPDATE_JOB_LOCK:
+        job = _UPDATE_JOBS.get(job_id)
+        if job is None:
+            return
+        job.update(fields)
+        job["updated_at"] = _utc_now()
+
+
+def _update_install_root() -> Path | None:
+    override = os.getenv("MECHCAD_UPDATE_INSTALL_ROOT")
+    if override:
+        root = Path(override).expanduser().resolve()
+        return root if root.exists() else None
+    if getattr(sys, "frozen", False):
+        return Path(sys.executable).resolve().parent
+    return None
+
+
+def _sha256_file(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as stream:
+        for chunk in iter(lambda: stream.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def _download_update_asset(url: str, destination: Path, cancel: threading.Event) -> None:
+    if not url.startswith("https://"):
+        raise _UpdateFailure("invalid_asset_url", "Release asset URL must use HTTPS.")
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    response = None
+    try:
+        response = requests.get(
+            url,
+            headers={"User-Agent": "VarenCAD-UpdateInstaller"},
+            stream=True,
+            timeout=_update_timeout(),
+        )
+        response.raise_for_status()
+        final_url = str(getattr(response, "url", url))
+        if not final_url.startswith("https://"):
+            raise _UpdateFailure("invalid_asset_url", "Release asset redirect did not remain on HTTPS.")
+        total = 0
+        with destination.open("wb") as stream:
+            for chunk in response.iter_content(chunk_size=1024 * 1024):
+                if cancel.is_set():
+                    raise _UpdateCancelled()
+                if not chunk:
+                    continue
+                total += len(chunk)
+                if total > _UPDATE_MAX_DOWNLOAD_BYTES:
+                    raise _UpdateFailure("download_too_large", "Release asset exceeds the download size limit.")
+                stream.write(chunk)
+        if cancel.is_set():
+            raise _UpdateCancelled()
+        if total == 0:
+            raise _UpdateFailure("download_empty", "Release asset is empty.")
+    except _UpdateCancelled:
+        raise
+    except _UpdateFailure:
+        raise
+    except (requests.RequestException, OSError) as exc:
+        raise _UpdateFailure("download_failed", f"Download failed or was incomplete: {exc}") from exc
+    finally:
+        if response is not None:
+            close = getattr(response, "close", None)
+            if callable(close):
+                close()
+
+
+def _read_sha256_file(path: Path, expected_name: str) -> str:
+    del expected_name
+    try:
+        text = path.read_text(encoding="utf-8").strip()
+    except (OSError, UnicodeError) as exc:
+        raise _UpdateFailure("checksum_unreadable", "Checksum asset could not be read.") from exc
+    if len(text) > 1024:
+        raise _UpdateFailure("checksum_invalid", "Checksum asset is invalid.")
+    match = re.fullmatch(r"([0-9A-Fa-f]{64})(?:\s+\*?[^#\r\n]+)?", text)
+    if not match:
+        raise _UpdateFailure("checksum_invalid", "Checksum asset is not a valid SHA256 file.")
+    return match.group(1).lower()
+
+def _validate_update_archive(zip_path: Path, version: str) -> tuple[str, list[str]]:
+    expected_root = f"VarenCAD-win64-{version}"
+    try:
+        with zipfile.ZipFile(zip_path) as archive:
+            infos = archive.infolist()
+            if not infos or len(infos) > _UPDATE_MAX_ARCHIVE_FILES:
+                raise _UpdateFailure("archive_invalid", "Release archive has an invalid file count.")
+            names: set[str] = set()
+            total_size = 0
+            for info in infos:
+                raw_name = info.filename.replace("\\", "/")
+                if not raw_name or raw_name.startswith("/") or raw_name.endswith(":"):
+                    raise _UpdateFailure("archive_invalid", "Release archive contains an absolute path.")
+                parts = [part for part in raw_name.split("/") if part not in ("", ".")]
+                if not parts or ".." in parts:
+                    raise _UpdateFailure("archive_invalid", "Release archive contains an unsafe path.")
+                if (info.external_attr >> 16) & 0o170000 == 0o120000:
+                    raise _UpdateFailure("archive_invalid", "Release archive contains a symlink.")
+                normalized = "/".join(parts)
+                if normalized in names:
+                    raise _UpdateFailure("archive_invalid", "Release archive contains duplicate entries.")
+                names.add(normalized)
+                total_size += info.file_size
+                if Path(normalized).name == ".env":
+                    raise _UpdateFailure("archive_contains_env", "Release archive must not contain .env.")
+            if total_size > _UPDATE_MAX_UNCOMPRESSED_BYTES:
+                raise _UpdateFailure("archive_too_large", "Release archive exceeds the uncompressed size limit.")
+            roots = {name.split("/", 1)[0] for name in names}
+            if roots != {expected_root}:
+                raise _UpdateFailure("archive_layout_invalid", "Release archive layout does not match the Windows x64 package.")
+            has_internal = any(name.startswith(f"{expected_root}/_internal/") for name in names)
+            if f"{expected_root}/VarenCAD.exe" not in names or not has_internal:
+                raise _UpdateFailure("archive_layout_invalid", "Release archive is missing VarenCAD.exe or _internal.")
+            return expected_root, sorted(names)
+    except zipfile.BadZipFile as exc:
+        raise _UpdateFailure("archive_invalid", "Release archive is not a valid zip file.") from exc
+    except OSError as exc:
+        raise _UpdateFailure("archive_invalid", "Release archive could not be opened.") from exc
+
+
+def _extract_update_archive(zip_path: Path, archive_root: str, extract_root: Path) -> Path:
+    extract_root.mkdir(parents=True, exist_ok=True)
+    try:
+        with zipfile.ZipFile(zip_path) as archive:
+            for info in archive.infolist():
+                name = info.filename.replace("\\", "/")
+                target = extract_root / name
+                if not target.resolve().is_relative_to(extract_root.resolve()):
+                    raise _UpdateFailure("archive_invalid", "Release archive contains an unsafe path.")
+                archive.extract(info, extract_root)
+    except (OSError, zipfile.BadZipFile) as exc:
+        raise _UpdateFailure("archive_invalid", "Release archive extraction failed.") from exc
+    package_root = extract_root / archive_root
+    if not (package_root / "VarenCAD.exe").is_file():
+        raise _UpdateFailure("archive_layout_invalid", "Extracted package is missing VarenCAD.exe.")
+    return package_root
+
+_UPDATE_APPLY_SCRIPT_TEMPLATE = r'''param(
+    [Parameter(Mandatory = $true)][string]$AppRoot,
+    [Parameter(Mandatory = $true)][string]$StagingRoot,
+    [Parameter(Mandatory = $true)][string]$BackupRoot,
+    [Parameter(Mandatory = $true)][string]$PreserveRoot,
+    [Parameter(Mandatory = $true)][int]$ProcessId,
+    [Parameter(Mandatory = $true)][string]$ManifestPath
+)
+$ErrorActionPreference = "Stop"
+$logPath = Join-Path (Split-Path -Parent $ManifestPath) "update-apply.log"
+function Write-UpdateLog([string]$Message) {
+    Add-Content -LiteralPath $logPath -Value "$(Get-Date -Format o) $Message" -Encoding UTF8
+}
+function Get-UpdateRelativePath([string]$Path) {
+    $fullPath = [System.IO.Path]::GetFullPath($Path)
+    return $fullPath.Substring($script:AppRoot.Length + 1).Replace("\", "/")
+}
+function Copy-UpdateUserData {
+    param([string]$SourceRoot, [string]$DestinationRoot)
+    New-Item -ItemType Directory -Force -Path $DestinationRoot | Out-Null
+    Get-ChildItem -LiteralPath $SourceRoot -Force | ForEach-Object {
+        $relativePath = Get-UpdateRelativePath $_.FullName
+        if ($script:PackageFiles.Contains($relativePath)) {
+            if ($_.PSIsContainer) {
+                Copy-UpdateUserData -SourceRoot $_.FullName -DestinationRoot $DestinationRoot
+            }
+            return
+        }
+        $target = Join-Path $DestinationRoot $relativePath
+        New-Item -ItemType Directory -Force -Path (Split-Path -Parent $target) | Out-Null
+        if ($_.PSIsContainer) {
+            Copy-Item -LiteralPath $_.FullName -Destination $target -Recurse -Force
+        } else {
+            Copy-Item -LiteralPath $_.FullName -Destination $target -Force
+        }
+    }
+}
+function Restore-UpdateUserData {
+    if (-not (Test-Path -LiteralPath $script:PreserveRoot)) { return }
+    Get-ChildItem -LiteralPath $script:PreserveRoot -Recurse -Force -Directory | ForEach-Object {
+        $relativePath = $_.FullName.Substring($script:PreserveRoot.Length + 1).Replace("\", "/")
+        New-Item -ItemType Directory -Force -Path (Join-Path $script:AppRoot $relativePath) | Out-Null
+    }
+    Get-ChildItem -LiteralPath $script:PreserveRoot -Recurse -Force -File | ForEach-Object {
+        $relativePath = $_.FullName.Substring($script:PreserveRoot.Length + 1).Replace("\", "/")
+        $target = Join-Path $script:AppRoot $relativePath
+        New-Item -ItemType Directory -Force -Path (Split-Path -Parent $target) | Out-Null
+        Copy-Item -LiteralPath $_.FullName -Destination $target -Force
+    }
+}
+$appMoved = $false
+try {
+    if (-not (Test-Path -LiteralPath $ManifestPath)) { throw "update manifest is missing" }
+    $manifest = Get-Content -LiteralPath $ManifestPath -Raw | ConvertFrom-Json
+    if ($manifest.status -ne "ready") { throw "update is not ready" }
+    if (-not (Test-Path -LiteralPath (Join-Path $StagingRoot "VarenCAD.exe"))) { throw "staged update is missing" }
+    if (Test-Path -LiteralPath $BackupRoot) { throw "update backup already exists" }
+    $script:AppRoot = [System.IO.Path]::GetFullPath($AppRoot).TrimEnd("\")
+    $script:PreserveRoot = [System.IO.Path]::GetFullPath($PreserveRoot).TrimEnd("\")
+    $script:PackageFiles = [System.Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
+    foreach ($name in @($manifest.package_files)) { [void]$script:PackageFiles.Add([string]$name) }
+
+    Write-UpdateLog "waiting for process $ProcessId to exit"
+    Wait-Process -Id $ProcessId -ErrorAction SilentlyContinue
+    if (Test-Path -LiteralPath $PreserveRoot) { Remove-Item -LiteralPath $PreserveRoot -Recurse -Force }
+    New-Item -ItemType Directory -Force -Path $PreserveRoot | Out-Null
+    Write-UpdateLog "preserving user files before replacing program files"
+    Copy-UpdateUserData -SourceRoot $script:AppRoot -DestinationRoot $script:PreserveRoot
+
+    Rename-Item -LiteralPath $script:AppRoot -NewName ([System.IO.Path]::GetFileName($BackupRoot))
+    $appMoved = $true
+    Move-Item -LiteralPath $StagingRoot -Destination $script:AppRoot
+    Restore-UpdateUserData
+
+    $manifest.status = "applied"
+    [System.IO.File]::WriteAllText($ManifestPath, ($manifest | ConvertTo-Json -Depth 6))
+    Write-UpdateLog "update applied; user data was restored"
+    if (Test-Path -LiteralPath $PreserveRoot) { Remove-Item -LiteralPath $PreserveRoot -Recurse -Force }
+    exit 0
+} catch {
+    if ($appMoved) {
+        if (Test-Path -LiteralPath $script:AppRoot) {
+            Move-Item -LiteralPath $script:AppRoot -Destination $StagingRoot
+        }
+        if ((Test-Path -LiteralPath $BackupRoot) -and -not (Test-Path -LiteralPath $script:AppRoot)) {
+            Move-Item -LiteralPath $BackupRoot -Destination $script:AppRoot
+        }
+        try { Restore-UpdateUserData } catch { Write-UpdateLog "user data restore after rollback failed: $($_.Exception.Message)" }
+    }
+    if (Test-Path -LiteralPath $ManifestPath) {
+        try {
+            $manifest = Get-Content -LiteralPath $ManifestPath -Raw | ConvertFrom-Json
+            $manifest.status = "rolled_back"
+            [System.IO.File]::WriteAllText($ManifestPath, ($manifest | ConvertTo-Json -Depth 6))
+        } catch {}
+    }
+    if (Test-Path -LiteralPath $PreserveRoot) {
+        try { Remove-Item -LiteralPath $PreserveRoot -Recurse -Force } catch {}
+    }
+    exit 1
+}
+'''
+
+_UPDATE_ROLLBACK_SCRIPT_TEMPLATE = r'''param(
+    [Parameter(Mandatory = $true)][string]$AppRoot,
+    [Parameter(Mandatory = $true)][string]$BackupRoot,
+    [Parameter(Mandatory = $true)][string]$StagingRoot,
+    [Parameter(Mandatory = $true)][string]$PreserveRoot,
+    [Parameter(Mandatory = $true)][string]$ManifestPath
+)
+$ErrorActionPreference = "Stop"
+function Get-UpdateRelativePath([string]$Path) {
+    $fullPath = [System.IO.Path]::GetFullPath($Path)
+    return $fullPath.Substring($script:AppRoot.Length + 1).Replace("\", "/")
+}
+function Copy-UpdateUserData {
+    param([string]$SourceRoot, [string]$DestinationRoot)
+    New-Item -ItemType Directory -Force -Path $DestinationRoot | Out-Null
+    Get-ChildItem -LiteralPath $SourceRoot -Force | ForEach-Object {
+        $relativePath = Get-UpdateRelativePath $_.FullName
+        if ($script:PackageFiles.Contains($relativePath)) {
+            if ($_.PSIsContainer) {
+                Copy-UpdateUserData -SourceRoot $_.FullName -DestinationRoot $DestinationRoot
+            }
+            return
+        }
+        $target = Join-Path $DestinationRoot $relativePath
+        New-Item -ItemType Directory -Force -Path (Split-Path -Parent $target) | Out-Null
+        if ($_.PSIsContainer) {
+            Copy-Item -LiteralPath $_.FullName -Destination $target -Recurse -Force
+        } else {
+            Copy-Item -LiteralPath $_.FullName -Destination $target -Force
+        }
+    }
+}
+function Restore-UpdateUserData {
+    if (-not (Test-Path -LiteralPath $script:PreserveRoot)) { return }
+    Get-ChildItem -LiteralPath $script:PreserveRoot -Recurse -Force -Directory | ForEach-Object {
+        $relativePath = $_.FullName.Substring($script:PreserveRoot.Length + 1).Replace("\", "/")
+        New-Item -ItemType Directory -Force -Path (Join-Path $script:AppRoot $relativePath) | Out-Null
+    }
+    Get-ChildItem -LiteralPath $script:PreserveRoot -Recurse -Force -File | ForEach-Object {
+        $relativePath = $_.FullName.Substring($script:PreserveRoot.Length + 1).Replace("\", "/")
+        $target = Join-Path $script:AppRoot $relativePath
+        New-Item -ItemType Directory -Force -Path (Split-Path -Parent $target) | Out-Null
+        Copy-Item -LiteralPath $_.FullName -Destination $target -Force
+    }
+}
+$appMoved = $false
+$backupMoved = $false
+try {
+    if (-not (Test-Path -LiteralPath $BackupRoot)) { throw "backup is missing" }
+    if (-not (Test-Path -LiteralPath $ManifestPath)) { throw "update manifest is missing" }
+    $manifest = Get-Content -LiteralPath $ManifestPath -Raw | ConvertFrom-Json
+    $script:AppRoot = [System.IO.Path]::GetFullPath($AppRoot).TrimEnd("\")
+    $script:PreserveRoot = [System.IO.Path]::GetFullPath($PreserveRoot).TrimEnd("\")
+    $script:PackageFiles = [System.Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
+    foreach ($name in @($manifest.package_files)) { [void]$script:PackageFiles.Add([string]$name) }
+
+    if (Test-Path -LiteralPath $PreserveRoot) { Remove-Item -LiteralPath $PreserveRoot -Recurse -Force }
+    New-Item -ItemType Directory -Force -Path $PreserveRoot | Out-Null
+    Copy-UpdateUserData -SourceRoot $script:AppRoot -DestinationRoot $script:PreserveRoot
+    Move-Item -LiteralPath $script:AppRoot -Destination $StagingRoot
+    $appMoved = $true
+    Move-Item -LiteralPath $BackupRoot -Destination $script:AppRoot
+    $backupMoved = $true
+    Restore-UpdateUserData
+
+    $manifest.status = "rolled_back"
+    [System.IO.File]::WriteAllText($ManifestPath, ($manifest | ConvertTo-Json -Depth 6))
+    if (Test-Path -LiteralPath $PreserveRoot) { Remove-Item -LiteralPath $PreserveRoot -Recurse -Force }
+    exit 0
+} catch {
+    if ($appMoved -and -not $backupMoved -and (Test-Path -LiteralPath $script:AppRoot)) {
+        Move-Item -LiteralPath $script:AppRoot -Destination $StagingRoot
+    }
+    if ((Test-Path -LiteralPath $BackupRoot) -and -not (Test-Path -LiteralPath $script:AppRoot)) {
+        Move-Item -LiteralPath $BackupRoot -Destination $script:AppRoot
+    }
+    try { Restore-UpdateUserData } catch {}
+    if (Test-Path -LiteralPath $ManifestPath) {
+        try {
+            $manifest = Get-Content -LiteralPath $ManifestPath -Raw | ConvertFrom-Json
+            $manifest.status = "rolled_back"
+            [System.IO.File]::WriteAllText($ManifestPath, ($manifest | ConvertTo-Json -Depth 6))
+        } catch {}
+    }
+    if (Test-Path -LiteralPath $PreserveRoot) {
+        try { Remove-Item -LiteralPath $PreserveRoot -Recurse -Force } catch {}
+    }
+    exit 1
+}
+'''
+
+def _write_update_script(script_path: Path, template: str) -> None:
+    script_path.parent.mkdir(parents=True, exist_ok=True)
+    script_path.write_text(template, encoding="utf-8")
+
+
+def _write_update_apply_script(script_path: Path) -> None:
+    _write_update_script(script_path, _UPDATE_APPLY_SCRIPT_TEMPLATE)
+
+
+def _write_update_rollback_script(script_path: Path) -> None:
+    _write_update_script(script_path, _UPDATE_ROLLBACK_SCRIPT_TEMPLATE)
+
+def _write_update_manifest(path: Path, state: dict[str, object]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temp = path.with_name(path.name + ".tmp")
+    temp.write_text(json.dumps(state, indent=2), encoding="utf-8")
+    os.replace(temp, path)
+
+def _cleanup_update_artifacts(job_id: str, app_root: Path) -> None:
+    download_root = app_root.parent / ".varen-update-downloads" / job_id
+    extract_root = app_root.parent / ".varen-update-extract" / job_id
+    staging_root = app_root.parent / ".varen-update-staging" / f"pending-{job_id}"
+    state_path = app_root / "work" / "update-state.json"
+    for path in (download_root, extract_root, staging_root):
+        if path.exists():
+            shutil.rmtree(path, ignore_errors=True)
+    if state_path.exists():
+        try:
+            state = json.loads(state_path.read_text(encoding="utf-8"))
+            if state.get("job_id") == job_id:
+                state_path.unlink()
+        except (OSError, ValueError):
+            state_path.unlink()
+
+
+def _selected_release_for_version(version: str) -> dict[str, object]:
+    releases = _fetch_update_releases(_update_repo(), _update_timeout())
+    selected = _select_update_release(releases, _update_channel())
+    if selected is None:
+        raise _UpdateFailure("release_not_found", "Requested release is not available for this channel.")
+    parsed, release = selected
+    latest_version = ".".join(str(part) for part in parsed[0])
+    if parsed[1]:
+        latest_version += "-" + ".".join(parsed[1])
+    if latest_version != version:
+        raise _UpdateFailure("version_not_found", "Requested version is not the selected release for this channel.")
+    return release
+
+
+def _run_update_job(job_id: str, app_root: Path) -> None:
+    cancel = _UPDATE_JOB_CANCELS[job_id]
+    job = _UPDATE_JOBS[job_id]
+    version = str(job["version"])
+    current_version = str(job["current_version"])
+    try:
+        current_parsed = _parse_update_version(current_version)
+        requested_parsed = _parse_update_version(version)
+        if current_parsed is None or requested_parsed is None:
+            raise _UpdateFailure("version_invalid", "Current or requested version is invalid.")
+        if _compare_update_versions(requested_parsed, current_parsed) <= 0:
+            raise _UpdateFailure("version_not_newer", "Requested version is not newer than the current version.")
+
+        release = _selected_release_for_version(version)
+        assets = _update_assets(release, version)
+        asset_map = {asset["name"]: asset["url"] for asset in assets}
+        zip_name = f"VarenCAD-win64-{version}.zip"
+        sha_name = f"VarenCAD-win64-{version}.sha256"
+        if set(asset_map) != {zip_name, sha_name}:
+            raise _UpdateFailure("assets_incomplete", "Release does not contain both zip and SHA256 assets.")
+
+        _set_update_job(job_id, status="downloading", message="Downloading the verified Windows x64 package.")
+        download_root = app_root.parent / ".varen-update-downloads" / job_id
+        zip_path = download_root / zip_name
+        sha_path = download_root / sha_name
+        _download_update_asset(asset_map[zip_name], zip_path, cancel)
+        _download_update_asset(asset_map[sha_name], sha_path, cancel)
+        if cancel.is_set():
+            raise _UpdateCancelled()
+
+        _set_update_job(job_id, status="verifying", message="Verifying the published SHA256 checksum.")
+        expected_hash = _read_sha256_file(sha_path, zip_name)
+        if _sha256_file(zip_path) != expected_hash:
+            raise _UpdateFailure("hash_mismatch", "Downloaded package checksum does not match the release checksum.")
+
+        _set_update_job(job_id, status="staging", message="Validating and staging the update without replacing the running app.")
+        if cancel.is_set():
+            raise _UpdateCancelled()
+        archive_root, archive_files = _validate_update_archive(zip_path, version)
+        package_file_set: set[str] = set()
+        for archive_name in archive_files:
+            if archive_name == archive_root:
+                continue
+            relative_name = archive_name[len(archive_root) + 1:]
+            relative_parts = relative_name.split("/")
+            for depth in range(1, len(relative_parts) + 1):
+                package_file_set.add("/".join(relative_parts[:depth]))
+        package_files = sorted(package_file_set)
+        extract_root = app_root.parent / ".varen-update-extract" / job_id
+        package_root = _extract_update_archive(zip_path, archive_root, extract_root)
+        staging_root = app_root.parent / ".varen-update-staging" / f"pending-{job_id}"
+        if staging_root.exists():
+            shutil.rmtree(staging_root)
+        shutil.move(str(package_root), str(staging_root))
+        shutil.rmtree(extract_root, ignore_errors=True)
+
+        backup_root = app_root.parent / f".{app_root.name}.backup-{version}-{job_id}"
+        preserve_root = app_root.parent / f".{app_root.name}.user-data-{version}-{job_id}"
+        apply_script = app_root.parent / f".{app_root.name}.apply-{version}-{job_id}.ps1"
+        rollback_script = app_root.parent / f".{app_root.name}.rollback-{version}-{job_id}.ps1"
+        _write_update_apply_script(apply_script)
+        _write_update_rollback_script(rollback_script)
+        state = {
+            "job_id": job_id,
+            "status": "ready",
+            "version": version,
+            "current_version": current_version,
+            "app_root": str(app_root),
+            "process_id": os.getpid(),
+            "staging_root": str(staging_root),
+            "backup_root": str(backup_root),
+            "preserve_root": str(preserve_root),
+            "package_files": package_files,
+            "apply_script": str(apply_script),
+            "rollback_script": str(rollback_script),
+            "created_at": _utc_now(),
+        }
+        _write_update_manifest(app_root / "work" / "update-state.json", state)
+        _set_update_job(
+            job_id,
+            status="ready",
+            message="Update downloaded and verified. Restart VarenCAD to apply it; nothing is overwritten while it is running.",
+        )
+    except _UpdateCancelled:
+        _cleanup_update_artifacts(job_id, app_root)
+        _set_update_job(job_id, status="cancelled", message="Update was cancelled. The current version is unchanged.")
+    except _UpdateFailure as exc:
+        _cleanup_update_artifacts(job_id, app_root)
+        _set_update_job(job_id, status="failed", message=str(exc), error_code=exc.code)
+    except Exception as exc:
+        _cleanup_update_artifacts(job_id, app_root)
+        _set_update_job(job_id, status="failed", message=f"Unexpected updater failure: {exc}", error_code="internal_error")
+
+def _start_update_install_sync(request: UpdateInstallRequest) -> dict[str, object]:
+    if not request.confirm:
+        raise HTTPException(
+            status_code=422,
+            detail={"code": "confirmation_required", "message": "User confirmation is required before downloading an update."},
+        )
+    if os.name != "nt" or platform.machine().upper() not in {"AMD64", "X86_64", "ARM64"}:
+        raise HTTPException(
+            status_code=400,
+            detail={"code": "platform_unsupported", "message": "Updates are currently supported only on Windows x64 packages."},
+        )
+    app_root = _update_install_root()
+    if app_root is None or not (app_root / "VarenCAD.exe").is_file():
+        raise HTTPException(
+            status_code=400,
+            detail={"code": "install_not_supported", "message": "Updates can only be installed from the Windows x64 package."},
+        )
+    with _UPDATE_INSTALL_LOCK:
+        active = any(job["status"] in {"queued", "downloading", "verifying", "staging"} for job in _UPDATE_JOBS.values())
+        if active:
+            raise HTTPException(status_code=409, detail={"code": "update_in_progress", "message": "Another update is already in progress."})
+        job_id = uuid.uuid4().hex
+        now = _utc_now()
+        job: dict[str, object] = {
+            "job_id": job_id,
+            "status": "queued",
+            "version": request.version,
+            "current_version": APP_VERSION,
+            "message": "Update request accepted. No download has started yet.",
+            "started_at": now,
+            "updated_at": now,
+            "error_code": None,
+        }
+        _UPDATE_JOBS[job_id] = job
+        _UPDATE_JOB_CANCELS[job_id] = threading.Event()
+        threading.Thread(target=_run_update_job, args=(job_id, app_root), daemon=True).start()
+    return _public_update_job(job)
+
+
+@app.post("/api/update/install", response_model=UpdateInstallResponse, status_code=202)
+async def install_update(request: UpdateInstallRequest) -> dict[str, object]:
+    """Download and stage an update only after explicit user confirmation."""
+
+    return await asyncio.to_thread(_start_update_install_sync, request)
+
+
+@app.get("/api/update/install/{job_id}", response_model=UpdateInstallResponse)
+async def update_install_status(job_id: str) -> dict[str, object]:
+    with _UPDATE_JOB_LOCK:
+        job = _UPDATE_JOBS.get(job_id)
+        if job is None:
+            raise HTTPException(status_code=404, detail={"code": "job_not_found", "message": "Update job does not exist."})
+        return _public_update_job(job)
+
+
+@app.post("/api/update/install/{job_id}/cancel", response_model=UpdateInstallResponse)
+async def cancel_update_install(job_id: str) -> dict[str, object]:
+    with _UPDATE_JOB_LOCK:
+        job = _UPDATE_JOBS.get(job_id)
+        if job is None:
+            raise HTTPException(status_code=404, detail={"code": "job_not_found", "message": "Update job does not exist."})
+        if job["status"] == "ready":
+            cancel = _UPDATE_JOB_CANCELS.get(job_id)
+            if cancel is not None:
+                cancel.set()
+            app_root = _update_install_root()
+            if app_root is not None:
+                _cleanup_update_artifacts(job_id, app_root)
+            job.update({"status": "cancelled", "message": "Prepared update was cancelled. The current version is unchanged.", "updated_at": _utc_now()})
+            return _public_update_job(job)
+        if job["status"] in {"cancelled", "failed"}:
+            return _public_update_job(job)
+        cancel = _UPDATE_JOB_CANCELS.get(job_id)
+        if cancel is not None:
+            cancel.set()
+        return _public_update_job(job)
 DIAG_LOG_TAIL_BYTES = 400_000
 DIAG_LOG_MAX_FILES = 8
 # 诊断包只报告这些环境变量的存在性与掩码值；键（KEY）永不写入。
@@ -1173,6 +1771,13 @@ def _run_agent_thread(
             "error": result.error,
             "artifacts": artifacts.model_dump(),
         })
+    except KernelWorkerError as exc:
+        message = _loc(
+            language,
+            f"agent 异常退出：[{exc.kind}] {exc}",
+            f"Agent crashed: [{exc.kind}] {exc}",
+        )
+        emit("agent_done", message, {"ok": False, "error": str(exc), "error_kind": exc.kind})
     except Exception as exc:  # noqa: BLE001 —— 线程内兜底，事件上报
         emit("agent_done", _loc(language, f"agent 异常退出：{exc}", f"Agent crashed: {exc}"), {"ok": False, "error": str(exc)})
     finally:
@@ -1469,7 +2074,9 @@ def get_artifact(run_id: str, kind: str):
         raise HTTPException(status_code=404, detail="Unknown artifact kind") from exc
     if not path.exists():
         raise HTTPException(status_code=404, detail="Artifact not found")
-    return FileResponse(path)
+    # 显式 filename：没有 Content-Disposition 时浏览器可能用编码 URL 或 model.stl
+    # 这类内部名命名下载文件；显式传递可保留中文零件/装配文件名。
+    return FileResponse(path, filename=path.name)
 
 
 @app.get("/api/projects/{project_id}/assembly/manifest")
@@ -1489,7 +2096,7 @@ def assembly_artifact(project_id: str, filename: str):
         raise HTTPException(status_code=404, detail="Unknown assembly artifact") from exc
     if not path.exists():
         raise HTTPException(status_code=404, detail="Assembly artifact not found")
-    return FileResponse(path)
+    return FileResponse(path, filename=path.name)
 
 
 @app.websocket("/ws/projects/{project_id}")

@@ -2,7 +2,6 @@ import { useState } from "react";
 import KernelFeatureForm from "../KernelFeatureForm";
 import KernelFeatureTree from "../KernelFeatureTree";
 import {
-  artifactUrl,
   type DesignIntentDetails,
   type EvidenceItem,
   type ExecutionReport,
@@ -11,8 +10,21 @@ import {
   type ProcessStep,
 } from "../api";
 import { useT } from "../i18n";
+import ArtifactSaveLink from "../ArtifactSaveLink";
 
 type Tab = "tree" | "property" | "review" | "process" | "export";
+
+export type ExportArtifactLink = {
+  url: string;
+  filename: string;
+};
+
+export type ExportArtifacts = {
+  step?: ExportArtifactLink;
+  stl?: ExportArtifactLink;
+  obj?: ExportArtifactLink;
+  executionReport?: ExportArtifactLink;
+};
 
 type Props = {
   busy: boolean;
@@ -38,6 +50,7 @@ type Props = {
   };
   unresolved: { feature: string; reason: string }[];
   runId?: string;
+  exportArtifacts?: ExportArtifacts;
   engineLabel: string;
   onSelectKernelFeature: (featureId: string) => void;
   onSaveKernelFeature: (featureId: string, newParams: Record<string, unknown>) => void;
@@ -65,6 +78,7 @@ export default function StructurePanel(props: Props) {
     review,
     unresolved,
     runId,
+    exportArtifacts,
     engineLabel,
     onSelectKernelFeature,
     onSaveKernelFeature,
@@ -273,9 +287,18 @@ export default function StructurePanel(props: Props) {
                 <span>{t("task.export.hint")}</span>
               </div>
               <div className="export-list">
-                <a className={runId ? "" : "disabled"} href={artifactUrl(runId, "step")}>STEP</a>
-                <a className={runId ? "" : "disabled"} href={artifactUrl(runId, "stl")}>STL</a>
-                <a className={runId ? "" : "disabled"} href={artifactUrl(runId, "execution_report")}>{t("app.artifact.report")}</a>
+                <ArtifactSaveLink
+                  url={exportArtifacts?.step?.url}
+                  filename={exportArtifacts?.step?.filename}
+                >STEP</ArtifactSaveLink>
+                <ArtifactSaveLink
+                  url={exportArtifacts?.stl?.url}
+                  filename={exportArtifacts?.stl?.filename}
+                >STL</ArtifactSaveLink>
+                <ArtifactSaveLink
+                  url={exportArtifacts?.executionReport?.url}
+                  filename={exportArtifacts?.executionReport?.filename}
+                >{t("app.artifact.report")}</ArtifactSaveLink>
               </div>
               <p className="hint">{t("task.export.safe", { engine: engineLabel })}</p>
             </div>

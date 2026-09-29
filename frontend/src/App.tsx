@@ -1,9 +1,14 @@
+import ArtifactSaveLink from "./ArtifactSaveLink";
 import AssemblyCheckSummary from "./layout/AssemblyCheckSummary";
+import InterferencePairs from "./layout/InterferencePairs";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   artifactUrl,
   assemblyArtifactUrl,
+  cancelUpdateInstall,
   checkForUpdate,
+  getUpdateInstall,
+  startUpdateInstall,
   createProject,
   deleteProject,
   deleteKernelFeature,
@@ -34,6 +39,7 @@ import {
   type SemanticPick,
   type SemanticSelection,
   type UpdateCheck,
+  type UpdateInstall,
 } from "./api";
 import type { MeasureResult } from "./measureTool";
 import ApprovalPanel from "./ApprovalPanel";
@@ -127,6 +133,7 @@ export default function App() {
   const chatInputRef = useRef<HTMLTextAreaElement>(null);
   const [planMode, setPlanMode] = useState(false);
   const [updateCheck, setUpdateCheck] = useState<UpdateCheck | null>(null);
+  const [updateInstall, setUpdateInstall] = useState<UpdateInstall | null>(null);
   const [updateDismissed, setUpdateDismissed] = useState(false);
   const language = useAppStore((state) => state.language);
 
@@ -515,6 +522,32 @@ export default function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  const handleStartUpdate = async (version: string) => {
+    if (!version) return;
+    try {
+      setUpdateInstall(await startUpdateInstall(version));
+    } catch (err) {
+      setUpdateInstall({
+        job_id: `local-${Date.now()}`,
+        status: "failed",
+        version,
+        current_version: updateCheck?.current_version || "",
+        message: String(err),
+        error_code: "start_failed",
+        started_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      });
+    }
+  };
+
+  const handleCancelUpdate = async (jobId: string) => {
+    try {
+      setUpdateInstall(await cancelUpdateInstall(jobId));
+    } catch {
+      // Keep the last known job state; the next poll or user action can recover.
+    }
+  };
+
   // Startup release check is non-intrusive: a network failure never becomes a UI error.
   useEffect(() => {
     let cancelled = false;
@@ -529,6 +562,23 @@ export default function App() {
       cancelled = true;
     };
   }, []);
+
+
+  useEffect(() => {
+    if (!updateInstall || !["queued", "downloading", "verifying", "staging"].includes(updateInstall.status)) {
+      return;
+    }
+    const jobId = updateInstall.job_id;
+    const timer = window.setInterval(async () => {
+      try {
+        const next = await getUpdateInstall(jobId);
+        setUpdateInstall(next);
+      } catch {
+        // Polling is best-effort; the banner keeps the last known state.
+      }
+    }, 1000);
+    return () => window.clearInterval(timer);
+  }, [updateInstall?.job_id, updateInstall?.status]);
 
   useEffect(() => {
     if (!project?.project_id) {
@@ -701,6 +751,20 @@ export default function App() {
   const hasModel = Boolean(project?.current.artifacts.stl) || liveActive;
   // v0.14 F2a：装配预览——export 过装配且零件带库 STL 时，视口切多件叠加
   const assembly = project?.current.artifacts.assembly ?? null;
+  // v0.23 下载修复：顶层 STEP/STL 链接必须指向真实存在的产物；多零件任务在
+  // 装配导出前没有 model.step/model.stl，不能再因为 runId 存在而给出 404 链接。
+  const artifacts = project?.current.artifacts;
+  const projectName = project?.name || "VarenCAD";
+  const stepArtifactUrl = artifacts?.step && runId
+    ? artifactUrl(runId, "step")
+    : (assembly?.step_file && project ? assemblyArtifactUrl(project.project_id, assembly.step_file) : "");
+  const stepArtifactName = artifacts?.step
+    ? `${projectName}_${runId}.step`
+    : (assembly?.step_file || "");
+  const stlArtifactUrl = artifacts?.stl && runId ? artifactUrl(runId, "stl") : "";
+  const objArtifactUrl = artifacts?.obj && runId ? artifactUrl(runId, "obj") : "";
+  const reportArtifactUrl = artifacts?.execution_report && runId
+    ? artifactUrl(runId, "execution_report") : "";
   // 干涉件名集合：把「硬碰撞 N」这个计数落到具体零件上（视口告警色 + 面板可点选）
   const interferingParts = useMemo(() => {
     const pairs = assembly?.pairs || [];
@@ -923,8 +987,11 @@ export default function App() {
 
       <UpdateBanner
         update={updateCheck}
-        dismissed={updateDismissed}
+        install={updateInstall}
+        dismissed={updateDismissed && !["queued", "downloading", "verifying", "staging", "ready"].includes(updateInstall?.status || "")}
         onDismiss={() => setUpdateDismissed(true)}
+        onStart={(version) => void handleStartUpdate(version)}
+        onCancel={(jobId) => void handleCancelUpdate(jobId)}
       />
 
       {error && (
@@ -987,12 +1054,20 @@ export default function App() {
             statusLabel={t(statusLabelKeys[status])}
           />
           <div className="artifact-row">
-            <a className={runId ? "" : "disabled"} href={artifactUrl(runId, "step")}>STEP</a>
-            <a className={runId ? "" : "disabled"} href={artifactUrl(runId, "stl")}>STL</a>
-            {artifactUrl(runId, "obj") && (
-              <a className={runId ? "" : "disabled"} href={artifactUrl(runId, "obj")}>OBJ</a>
+            <ArtifactSaveLink url={stepArtifactUrl} filename={stepArtifactName}>STEP</ArtifactSaveLink>
+            <ArtifactSaveLink
+              url={stlArtifactUrl}
+              filename={artifacts?.stl ? `${projectName}_${runId}.stl` : undefined}
+            >STL</ArtifactSaveLink>
+            {objArtifactUrl && (
+              <ArtifactSaveLink
+                url={objArtifactUrl}
+                filename={`${projectName}_${runId}.obj`}
+              >OBJ</ArtifactSaveLink>
             )}
-            <a className={runId ? "" : "disabled"} href={artifactUrl(runId, "execution_report")}>{t("app.artifact.report")}</a>
+            <ArtifactSaveLink url={reportArtifactUrl} filename="execution_report.json">
+              {t("app.artifact.report")}
+            </ArtifactSaveLink>
           </div>
           {(project?.current.artifacts.parts?.length ?? 0) > 0 && (
             <details className="part-downloads" data-testid="artifact-parts">
@@ -1001,8 +1076,18 @@ export default function App() {
               {project!.current.artifacts.parts!.map((part) => (
                 <span key={`${part.index}-${part.part}`} className="artifact-part">
                   <span className="artifact-part-name" title={part.note || part.part}>{part.part}</span>
-                  {part.step_file && <a href={artifactUrl(runId, part.step_file)}>STEP</a>}
-                  {part.stl_file && <a href={artifactUrl(runId, part.stl_file)}>STL</a>}
+                  {part.step_file && (
+                    <ArtifactSaveLink
+                      url={artifactUrl(runId, part.step_file)}
+                      filename={part.step_file}
+                    >STEP</ArtifactSaveLink>
+                  )}
+                  {part.stl_file && (
+                    <ArtifactSaveLink
+                      url={artifactUrl(runId, part.stl_file)}
+                      filename={part.stl_file}
+                    >STL</ArtifactSaveLink>
+                  )}
                 </span>
               ))}
               </div>
@@ -1012,27 +1097,25 @@ export default function App() {
             <div className="assembly-panel" data-testid="assembly-panel">
               <div className="assembly-panel-head">
                 <span className="eyebrow">ASSEMBLY</span>
-                {assembly.step_file && <a href={assemblyArtifactUrl(project.project_id, assembly.step_file)}>{t("app.assembly.step")}</a>}
+                {assembly.step_file && (
+                  <ArtifactSaveLink
+                    url={assemblyArtifactUrl(project.project_id, assembly.step_file)}
+                    filename={assembly.step_file}
+                  >{t("app.assembly.step")}</ArtifactSaveLink>
+                )}
                 {assembly.report_file && (
-                  <a href={assemblyArtifactUrl(project.project_id, assembly.report_file)}>{t("app.assembly.report")}</a>
+                  <ArtifactSaveLink
+                    url={assemblyArtifactUrl(project.project_id, assembly.report_file)}
+                    filename={assembly.report_file}
+                  >{t("app.assembly.report")}</ArtifactSaveLink>
                 )}
               </div>
               <AssemblyCheckSummary assembly={assembly} />
-              {interferingParts.length > 0 && (
-                <div className="assembly-interference-list" data-testid="assembly-interference">
-                  <span className="eyebrow">{t("app.assembly.interference_title")}</span>
-                  {interferingParts.map((name) => (
-                    <button
-                      key={name}
-                      type="button"
-                      className={`assembly-interference-part${assemblySelected === name ? " selected" : ""}`}
-                      onClick={() => setAssemblySelected((current) => (current === name ? null : name))}
-                    >
-                      {name}
-                    </button>
-                  ))}
-                </div>
-              )}
+              <InterferencePairs
+                pairs={assembly.pairs}
+                selected={assemblySelected}
+                onSelectPart={(name) => setAssemblySelected((current) => (current === name ? null : name))}
+              />
               <div className="assembly-view-actions">
                 <span>{t("app.assembly.selected", { name: assemblySelected || "—" })}</span>
                 <button type="button" disabled={!assemblySelected || !assemblyModels?.some((m) => m.name === assemblySelected)}
@@ -1093,6 +1176,18 @@ export default function App() {
             review={review}
             unresolved={unresolved}
             runId={runId}
+            exportArtifacts={{
+              step: stepArtifactUrl ? { url: stepArtifactUrl, filename: stepArtifactName } : undefined,
+              stl: stlArtifactUrl
+                ? { url: stlArtifactUrl, filename: `${projectName}_${runId}.stl` }
+                : undefined,
+              obj: objArtifactUrl
+                ? { url: objArtifactUrl, filename: `${projectName}_${runId}.obj` }
+                : undefined,
+              executionReport: reportArtifactUrl
+                ? { url: reportArtifactUrl, filename: "execution_report.json" }
+                : undefined,
+            }}
             engineLabel={engineLabel}
             onSelectKernelFeature={setSelectedFeatureId}
             onSaveKernelFeature={(fid, params) => void onSaveKernelFeature(fid, params)}

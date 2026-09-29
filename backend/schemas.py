@@ -829,7 +829,7 @@ class ModelListResponse(BaseModel):
 
 
 class UpdateAsset(BaseModel):
-    """Downloadable release asset metadata. The app only links; it never downloads."""
+    """Downloadable release asset metadata. Installation downloads only after user confirmation."""
 
     name: str
     url: str
@@ -848,6 +848,26 @@ class UpdateCheckResponse(BaseModel):
     checked_at: str
     message: str | None = None
     assets: list[UpdateAsset] = Field(default_factory=list)
+
+
+class UpdateInstallRequest(BaseModel):
+    """Explicit user confirmation is required before any download starts."""
+
+    version: str = Field(min_length=1, max_length=64, pattern=r"^[0-9A-Za-z][0-9A-Za-z.+-]*$")
+    confirm: bool = False
+
+
+class UpdateInstallResponse(BaseModel):
+    """State of a user-initiated update transaction."""
+
+    job_id: str
+    status: Literal["queued", "downloading", "verifying", "staging", "ready", "cancelled", "failed"]
+    version: str
+    current_version: str
+    message: str
+    error_code: str | None = None
+    started_at: str
+    updated_at: str
 
 
 class EffectiveModelsRequest(BaseModel):

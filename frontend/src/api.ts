@@ -258,6 +258,17 @@ export type UpdateCheck = {
   message?: string | null;
   assets: UpdateAsset[];
 };
+
+export type UpdateInstall = {
+  job_id: string;
+  status: "queued" | "downloading" | "verifying" | "staging" | "ready" | "cancelled" | "failed";
+  version: string;
+  current_version: string;
+  message: string;
+  error_code?: string | null;
+  started_at: string;
+  updated_at: string;
+};
 export type SemanticTrianglesDisplayMesh = {
   type: "triangles";
   vertices: [number, number, number][];
@@ -445,11 +456,33 @@ export function resolveWsRoot(env: any = (import.meta as any).env, apiRoot: stri
   return `${window.location.protocol === "https:" ? "wss" : "ws"}://${window.location.host}`;
 }
 
-/** v0.23 phase 1: check-only release lookup. The UI never downloads or installs an update. */
+/** v0.23 phase 1: Release lookup. Installation starts only after an explicit user action. */
 export async function checkForUpdate(force = false): Promise<UpdateCheck> {
   const query = force ? "?force=true" : "";
   const response = await fetch(`${API_ROOT}/api/update/check${query}`);
   return parseResponse<UpdateCheck>(response);
+}
+
+/** v0.23 phase 2: starts only after an explicit user click in the UI. */
+export async function startUpdateInstall(version: string): Promise<UpdateInstall> {
+  const response = await fetch(`${API_ROOT}/api/update/install`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ version, confirm: true }),
+  });
+  return parseResponse<UpdateInstall>(response);
+}
+
+export async function getUpdateInstall(jobId: string): Promise<UpdateInstall> {
+  const response = await fetch(`${API_ROOT}/api/update/install/${encodeURIComponent(jobId)}`);
+  return parseResponse<UpdateInstall>(response);
+}
+
+export async function cancelUpdateInstall(jobId: string): Promise<UpdateInstall> {
+  const response = await fetch(`${API_ROOT}/api/update/install/${encodeURIComponent(jobId)}/cancel`, {
+    method: "POST",
+  });
+  return parseResponse<UpdateInstall>(response);
 }
 
 export async function createProject(name = "Varen CAD Project") {
@@ -596,12 +629,25 @@ export type AssemblyPose = {
   rotation_matrix?: number[][] | null;
 };
 
+export type InterferenceDiagnosticStatus = "complete" | "degraded" | "calculation_error";
+
+export type InterferenceSuggestedSeparation = {
+  axis: number[];
+  distance_mm: number;
+  basis: string;
+  advisory: boolean;
+};
+
 export type InterferencePair = {
+  pair_id?: string | null;
   name_a: string;
   name_b: string;
   interfering: boolean;
   volume_mm3: number;
   center?: number[] | null;
+  intersection_bbox?: number[] | null;
+  diagnostic_status?: InterferenceDiagnosticStatus | null;
+  suggested_separation?: InterferenceSuggestedSeparation | null;
   error?: string | null;
   exempt_reason?: string | null;
 };
@@ -807,9 +853,78 @@ export function artifactUrl(
   if (!runId || !kind) {
     return "";
   }
-  return `${API_ROOT}/api/artifacts/${runId}/${kind}`;
+  return `${API_ROOT}/api/artifacts/${encodeURIComponent(runId)}/${encodeURIComponent(kind)}`;
 }
 
+// v0.23 Save As：优先使用浏览器的原生“另存为”对话框。
+// File System Access API 由用户点击触发；不支持时保持普通下载，不伪装成功。
+type FileSystemWritableFileStreamLike = {
+  write: (data: ReadableStream<Uint8Array> | ArrayBuffer) => Promise<void>;
+  close: () => Promise<void>;
+  abort?: (reason?: unknown) => Promise<void>;
+};
+
+type SaveFilePickerLike = {
+  suggestedName?: string;
+};
+
+type SaveFileHandleLike = {
+  createWritable: () => Promise<FileSystemWritableFileStreamLike>;
+};
+
+type WindowWithSavePicker = Window & {
+  showSaveFilePicker?: (options?: SaveFilePickerLike) => Promise<SaveFileHandleLike>;
+};
+
+export type SaveArtifactAsResult = "saved" | "cancelled" | "browser-download";
+
+export async function saveArtifactAs(url: string, filename: string): Promise<SaveArtifactAsResult> {
+  if (!url || !filename) {
+    throw new Error("Export artifact is unavailable.");
+  }
+
+  const picker = (window as WindowWithSavePicker).showSaveFilePicker;
+  if (typeof picker !== "function") {
+    return "browser-download";
+  }
+
+  let handle: SaveFileHandleLike;
+  try {
+    handle = await picker({ suggestedName: filename });
+  } catch (error) {
+    if (error instanceof DOMException && error.name === "AbortError") {
+      return "cancelled";
+    }
+    throw error;
+  }
+
+  const response = await fetch(url, { credentials: "same-origin" });
+  if (!response.ok) {
+    throw new Error(`Export download failed (${response.status} ${response.statusText}).`);
+  }
+
+  const writable = await handle.createWritable();
+  try {
+    if (response.body) {
+      await writable.write(response.body);
+    } else {
+      await writable.write(await response.arrayBuffer());
+    }
+    await writable.close();
+  } catch (error) {
+    if (writable.abort) {
+      try {
+        await writable.abort(error);
+      } catch {
+        // The browser reports the original write failure; a secondary abort
+        // failure must not hide it.
+      }
+    }
+    throw error;
+  }
+
+  return "saved";
+}
 // v0.14 F2a：项目零件库/装配产物文件（manifest 权威，跨 run 稳定）
 export function assemblyArtifactUrl(projectId: string | undefined, filename: string | null | undefined) {
   if (!projectId || !filename) {

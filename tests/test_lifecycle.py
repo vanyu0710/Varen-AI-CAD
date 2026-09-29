@@ -85,6 +85,25 @@ class LifecycleTests(unittest.TestCase):
         self.assertFalse(payload["success"])
         self.assertEqual(payload["error_kind"], "INTERFERENCE_BLOCKED")
         self.assertGreaterEqual(len(payload["hard_collisions"]), 1)
+        self.assertIn("a×b", payload["error"])
+        self.assertIn("12.5", payload["error"])
+        self.assertIn("(1.00, 2.00, 3.00)", payload["error"])
+        self.assertEqual(payload["hard_collisions"][0]["pair_id"], "pair:a|b")
+        self.assertEqual(payload["hard_collisions"][0]["diagnostic_status"], "complete")
+        self.assertEqual(payload["interference_summary"]["calculation_error"], 0)
+        self.assertNotIn("export", [c[0] for c in worker.assembly_calls])
+        self.assertIsNone(result.assembly)
+
+    def test_calculation_error_blocks_export_without_hard_collision(self) -> None:
+        worker = FakeWorker()
+        worker.interfere_pair = False
+        worker.interference_calculation_error = True
+        payload, result, _ = self._export_run(worker, ["a", "b"])
+        self.assertFalse(payload["success"])
+        self.assertEqual(payload["error_kind"], "INTERFERENCE_BLOCKED")
+        self.assertEqual(payload["interference_summary"]["calculation_error"], 1)
+        self.assertEqual(payload["calculation_errors"][0]["diagnostic_status"], "calculation_error")
+        self.assertIn("OCC failure", payload["calculation_errors"][0]["error"])
         self.assertNotIn("export", [c[0] for c in worker.assembly_calls])
         self.assertIsNone(result.assembly)
 

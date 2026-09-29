@@ -59,6 +59,7 @@ class FakeWorker:
         self.holes_result: dict | None = None
         # v2.17 生命周期桩：是否让前两零件产生一对干涉（False=无干涉装配）
         self.interfere_pair = True
+        self.interference_calculation_error = False
         # v0.14 装配命令桩调用记录
         self.assembly_calls: list[tuple] = []
 
@@ -79,8 +80,19 @@ class FakeWorker:
         self.assembly_calls.append(("interference", len(parts)))
         pairs = []
         if len(parts) >= 2 and getattr(self, "interfere_pair", True):
-            pairs = [{"name_a": parts[0]["name"], "name_b": parts[1]["name"],
-                      "interfering": True, "volume_mm3": 12.5}]
+            pairs = [{"pair_id": f"pair:{parts[0]['name']}|{parts[1]['name']}",
+                      "name_a": parts[0]["name"], "name_b": parts[1]["name"],
+                      "interfering": True, "volume_mm3": 12.5,
+                      "center": [1.0, 2.0, 3.0],
+                      "intersection_bbox": [0.0, 0.0, 0.0, 2.0, 4.0, 6.0],
+                      "diagnostic_status": "complete",
+                      "suggested_separation": {"axis": [1.0, 0.0, 0.0], "distance_mm": 5.0,
+                                               "basis": "bbox_center_difference", "advisory": True}}]
+        if getattr(self, "interference_calculation_error", False):
+            pairs.append({"pair_id": f"pair:{parts[0]['name']}|error",
+                          "name_a": parts[0]["name"], "name_b": "error",
+                          "interfering": False, "volume_mm3": 0.0,
+                          "diagnostic_status": "calculation_error", "error": "OCC failure"})
         # 镜像真实内核语义：豁免对移入 exempted 列表（不进 pairs），仍计入 interfering_count
         kept, exempted = [], []
         for p in pairs:
@@ -1353,6 +1365,44 @@ class AgentLoopRunBuildScriptTests(unittest.TestCase):
         self.assertEqual(worker.exported_step, [])
         self.assertEqual(worker.reset_calls, 0)
 
+    def test_finish_part_hole_analysis_incomplete_blocks_archiving(self) -> None:
+        worker = FakeWorker([
+            {"success": True, "value": 8000.0},
+            {"success": True, "value": 1},
+        ])
+        worker.holes_result = {
+            "success": True,
+            "value": {
+                "holes": [],
+                "analysis_status": "incomplete",
+                "reason_code": "budget_exceeded",
+                "processed_face_count": 0,
+                "total_cylindrical_face_count": 42,
+                "completed_holes": 0,
+                "elapsed_ms": 1.0,
+                "budget_seconds": 1e-9,
+            },
+        }
+        seen: list = []
+        calls = {"n": 0}
+
+        def chat(messages, tools):
+            calls["n"] += 1
+            if calls["n"] == 1:
+                return _round_with_call("finish_part", {
+                    "part": "housing",
+                    "feature_contract": [{"type": "through_hole", "diameter_mm": 6, "count": 1}],
+                })
+            seen.append(self._last_tool_payload(messages))
+            return ToolCallRound(text="\u7b49\u5f85\u5b8c\u6574\u8bc1\u636e", tool_calls=[])
+
+        _run(worker, chat)
+        self.assertFalse(seen[0]["success"])
+        self.assertEqual(seen[0]["error_kind"], "HOLE_ANALYSIS_INCOMPLETE")
+        self.assertIn("total=42", seen[0]["hole_analysis"])
+        self.assertEqual(worker.exported_step, [])
+        self.assertEqual(worker.reset_calls, 0)
+
     def test_finish_part_feature_contract_passes_when_matched(self) -> None:
         worker = FakeWorker([
             {"success": True, "value": 8000.0},
@@ -1598,8 +1648,10 @@ class AssemblyFlowTests(unittest.TestCase):
                                             "fingerprint": "sha256:new-transient"},
                 }
                 self.audit_payloads: list[list[dict]] = []
+                self.brief_payloads: list[list[dict]] = []
 
             def housing_brief(self, parts, **_kwargs) -> dict:
+                self.brief_payloads.append([dict(p) for p in parts])
                 return {"ok": True, "required_cavity": [0, 0, 0, 200, 100, 100]}
 
             def audit_housing(self, parts, *, brief=None, **_kwargs) -> dict:
@@ -1611,6 +1663,76 @@ class AssemblyFlowTests(unittest.TestCase):
                         "checks": [{"id": "layout", "status": "PASS", "detail": "transient 几何"}]}
 
         return HousingAuditWorker()
+
+    def test_housing_audit_uses_bom_pose_and_dependencies(self) -> None:
+        """火箭发动机回归：LOX 壳体审计不能把推力室/燃料转子全部混进来。"""
+        from backend import storage
+        from backend.agent.session import AgentSession
+
+        worker = self._housing_worker(audit_ok=True)
+        calls = {"n": 0}
+
+        def chat(messages, tools):
+            calls["n"] += 1
+            if calls["n"] == 1:
+                return _round_with_call("finish_part", {"part": "lox_housing"})
+            return ToolCallRound(text="继续", tool_calls=[])
+
+        bom = [
+            {"part": "thrust_chamber", "pose": {"position": [0.0, 0.0, 0.0]}},
+            {"part": "lox_rotor", "pose": {"position": [10.0, 0.0, 0.0]}},
+            {"part": "lox_housing", "depends_on": ["lox_rotor"],
+             "pose": {"position": [12.0, 0.0, 0.0],
+                      "rotation_deg": [90.0, [0.0, 1.0, 0.0]]}},
+            {"part": "fuel_rotor", "pose": {"position": [-10.0, 0.0, 0.0]}},
+            {"part": "fuel_housing", "depends_on": ["fuel_rotor"],
+             "pose": {"position": [-12.0, 0.0, 0.0]}},
+        ]
+        files = {
+            "thrust_chamber": ([30.0, 0.0, 0.0], False),
+            "lox_rotor": ([10.0, 0.0, 0.0], False),
+            "fuel_rotor": ([-10.0, 0.0, 0.0], False),
+            "fuel_housing": ([-12.0, 0.0, 0.0], True),
+        }
+        with tempfile.TemporaryDirectory() as td:
+            orig_root = storage.PROJECT_PARTS_ROOT
+            storage.PROJECT_PARTS_ROOT = Path(td) / "project_parts"
+            try:
+                lib_dir = storage.project_parts_dir("rocket-audit")
+                lib_dir.mkdir(parents=True)
+                entries = []
+                for name, (position, _is_housing) in files.items():
+                    step_file = f"v001_{name}.step"
+                    stl_file = f"v001_{name}.stl"
+                    (lib_dir / step_file).write_text(f"STEP {name}", encoding="utf-8")
+                    (lib_dir / stl_file).write_bytes(b"mesh")
+                    entries.append({"name": name, "version": 1, "status": "active",
+                                    "step_file": step_file, "stl_file": stl_file,
+                                    "pose": {"position": position}})
+                storage.write_manifest("rocket-audit", {"parts": entries, "assembly": None})
+
+                session = AgentSession(project_id="rocket-audit",
+                                       path=Path(td) / "agent_session.json")
+                session.set_plan("火箭发动机", [{"id": "s1", "title": "建 LOX 壳体",
+                                                "part": "lox_housing"}],
+                                 approved=True, bom=bom)
+                run_dir = Path(td) / "run"
+                run_dir.mkdir()
+                _run(worker, chat, run_dir=run_dir, session=session,
+                     mode="plan", project_id="rocket-audit")
+
+                self.assertEqual(len(worker.audit_payloads), 1)
+                audit = worker.audit_payloads[0]
+                self.assertEqual({p["name"] for p in audit}, {"lox_housing", "lox_rotor"})
+                current = next(p for p in audit if p["name"] == "lox_housing")
+                self.assertEqual(current["pose"]["position"], [12.0, 0.0, 0.0])
+                self.assertEqual(current["pose"]["rotation_deg"], [90.0, [0.0, 1.0, 0.0]])
+                rotor = next(p for p in audit if p["name"] == "lox_rotor")
+                self.assertEqual(rotor["pose"]["position"], [10.0, 0.0, 0.0])
+                self.assertEqual(len(worker.brief_payloads), 1)
+                self.assertEqual([p["name"] for p in worker.brief_payloads[0]], ["lox_rotor"])
+            finally:
+                storage.PROJECT_PARTS_ROOT = orig_root
 
     def test_housing_rework_audits_transient_geometry_and_versions_atomically(self) -> None:
         """同名壳体返工必须审计 transient 几何，并原子提交 v2。"""

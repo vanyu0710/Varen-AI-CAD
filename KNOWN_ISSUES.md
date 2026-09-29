@@ -1,6 +1,6 @@
 # Known Issues（已知问题）
 
-更新：2026-09-24 · 对应 v0.22.3-beta。产品处于 beta：**不承诺可直接投产**，
+更新：2026-09-29 · 对应 v0.22.4-beta。产品处于 beta：**不承诺可直接投产**，
 请人工复核所有尺寸与假设后再进入制造环节。发现问题请提 [Issue](https://github.com/vanyu0710/aicad/issues)
 （机械任务失败请优先用"任务失败报告"模板）。
 
@@ -32,6 +32,8 @@
 | 个别任务反复调研被硬门强制推进 | 模型打转（RESEARCH_BUDGET_EXCEEDED） | 已门控；仍可能损失一轮尝试 |
 | 复杂壳体偶发脚本回滚重试 | run_build_script 任一 op 失败整体回滚 | 自动回传 traceback 重试；失败率统计进行中 |
 | STL 预览网格与 STEP 精度差异 | 视口渲染用网格近似 | STEP 为几何真值，以 STEP 为准 |
+| 另存为路径选择 | 依赖 Chromium/WebView2 的 File System Access API | 不支持的浏览器自动回退普通下载 |
+| 自动更新 | 仅用户确认后执行；不覆盖运行中的程序 | 更新包校验通过并 staging 完成后需手动重启 |
 
 ## 数据与隐私
 

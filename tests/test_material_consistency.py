@@ -12,10 +12,9 @@ import unittest
 from pathlib import Path
 
 from backend.agent.materials import MATERIAL_BASE, material_color, resolve_material
+from backend.kernel_worker import kernel_repo_path
 
-KERNEL_MATERIALS = (
-    Path(__file__).resolve().parents[2].parent / "mechcad-kernel" / "mech_kernel" / "materials.py"
-)
+KERNEL_MATERIALS = kernel_repo_path() / "mech_kernel" / "materials.py"
 
 SAMPLE_NAMES = [
     "箱体", "下壳体", "端盖", "箱体盖",

@@ -91,6 +91,17 @@ def _compact_value(value: Any, *, max_items: int = _VALUE_MAX_ITEMS,
     return text[:max_str] + "…" if len(text) > max_str else text
 
 
+
+def _format_interference_center(center: Any) -> str:
+    if isinstance(center, (list, tuple)) and len(center) == 3:
+        try:
+            values = [float(center[0]), float(center[1]), float(center[2])]
+            if all(math.isfinite(value) for value in values):
+                return f"({values[0]:.2f}, {values[1]:.2f}, {values[2]:.2f})"
+        except (TypeError, ValueError):
+            pass
+    return "center unavailable"
+
 @dataclass
 class AgentLoopResult:
     ok: bool = False
@@ -1813,7 +1824,8 @@ class AgentLoop:
         不再可能以"豁免"名义混入。
         """
         cats: dict[str, list[dict]] = {"hard_collision": [], "expected_fit": [],
-                                       "expected_mesh": [], "historical_artifact": []}
+                                       "expected_mesh": [], "historical_artifact": [],
+                                       "calculation_error": []}
         overlaps = [o for o in (expected_overlaps or []) if isinstance(o, dict)]             if isinstance(expected_overlaps, list) else []
 
         def _category_for(a: str, b: str) -> str:
@@ -1825,9 +1837,13 @@ class AgentLoop:
             return "fit"
 
         for pair in interference.get("pairs") or []:
-            if not isinstance(pair, dict) or not pair.get("interfering"):
+            if not isinstance(pair, dict):
                 continue
-            # 内核语义：pairs 只含未豁免对；豁免对在 interference["exempted"]
+            if pair.get("diagnostic_status") == "calculation_error" or (
+                    pair.get("error") and not pair.get("interfering")):
+                cats["calculation_error"].append(pair)
+            if not pair.get("interfering"):
+                continue
             cats["hard_collision"].append(pair)
         for pair in interference.get("exempted") or []:
             if not isinstance(pair, dict):
@@ -1896,13 +1912,27 @@ class AgentLoop:
                     "error": f"装配命令执行失败: {type(exc).__name__}: {exc}"}
         categories = self._classify_interference(interference, args.get("expected_overlaps"))
         hard = [p for p in categories["hard_collision"]]
-        if hard:
+        calculation_errors = [p for p in categories["calculation_error"]]
+        if hard or calculation_errors:
+            details = [
+                f"{p.get('name_a')}\u00d7{p.get('name_b')} "
+                f"{round(float(p.get('volume_mm3') or 0), 1)}mm\u00b3 "
+                f"center={_format_interference_center(p.get('center'))}"
+                for p in hard[:3]
+            ]
+            details.extend(
+                f"{p.get('name_a')}\u00d7{p.get('name_b')} diagnostic_error"
+                for p in calculation_errors[:3]
+            )
+            reason = f"{len(hard)} hard collision pair(s)"
+            if calculation_errors:
+                reason += f", {len(calculation_errors)} calculation error pair(s)"
             return {"success": False, "error_kind": "INTERFERENCE_BLOCKED",
-                    "error": f"存在 {len(hard)} 对未豁免硬碰撞，装配导出被阻断："
-                             + "；".join(f"{p['name_a']}×{p['name_b']} {round(p.get('volume_mm3') or 0, 1)}mm³"
-                                          for p in hard[:10])
-                             + "。修复几何或（仅设计意图内的配合/啮合）用 expected_overlaps 声明 category。",
-                    "hard_collisions": hard[:20],
+                    "error": ("\u88c5\u914d\u5bfc\u51fa\u88ab\u963b\u65ad\uff1a" + reason + "\u3002"
+                              + "\uff1b".join(details)
+                              + "\u3002\u4fee\u590d\u51e0\u4f55\uff0c\u6216\u4ec5\u5bf9\u8bbe\u8ba1\u610f\u56fe\u5185\u7684\u914d\u5408/\u556e\u5408\u7528 expected_overlaps \u58f0\u660e category\uff1b\u8ba1\u7b97\u9519\u8bef\u5fc5\u987b\u5148\u590d\u6d4b\u3002"),
+                    "hard_collisions": hard,
+                    "calculation_errors": calculation_errors,
                     "interference_summary": {k: len(v) for k, v in categories.items()}}
         try:
             export = self.worker.export_assembly(parts_payload, str(out_step))
@@ -2065,6 +2095,16 @@ class AgentLoop:
             if not holes_res.get("success"):
                 violations.append(f"孔语义分析失败: {holes_res.get('error')}")
                 return violations
+            hole_analysis = holes_res.get("value") or {}
+            if hole_analysis.get("analysis_status") == "incomplete":
+                return [(
+                    "HOLE_ANALYSIS_INCOMPLETE: "
+                    f"processed={hole_analysis.get('processed_face_count', 0)}, "
+                    f"total={hole_analysis.get('total_cylindrical_face_count', 0)}, "
+                    f"completed={hole_analysis.get('completed_holes', 0)}, "
+                    f"elapsed_ms={hole_analysis.get('elapsed_ms', 0)}, "
+                    f"budget_seconds={hole_analysis.get('budget_seconds', 0)}"
+                )]
             holes = (holes_res.get("value") or {}).get("holes") or []
             for item in typed:
                 kind = str(item.get("type"))
@@ -2152,10 +2192,41 @@ class AgentLoop:
                 default=0,
             )
             lib_dir = storage.project_parts_dir(self.project_id or "").resolve()
+            bom_items = self._bom_items()
+            current_bom = next(
+                (b for b in bom_items if str(b.get("part") or "") == current_name),
+                None,
+            ) if current_name else None
+            # 壳体审计的上下文必须来自 BOM：当前壳体只审计自己依赖的内部件。
+            # 没有 depends_on 时保守使用 BOM 中的全部非壳体；没有 BOM 时保持旧调用兼容。
+            internal_names: set[str] | None = None
+            if current_name:
+                dependencies = [str(d) for d in (current_bom or {}).get("depends_on") or []]
+                if dependencies:
+                    internal_names = set(dependencies)
+                elif bom_items:
+                    internal_names = {
+                        str(b.get("part") or "") for b in bom_items
+                        if b.get("part") and not _is_housing_name(str(b.get("part")))
+                    }
+                else:
+                    internal_names = {
+                        str(e.get("name") or "") for e in entries
+                        if e.get("name") and not _is_housing_name(str(e.get("name")))
+                    }
+                if current_name in (internal_names or set()):
+                    internal_names.remove(current_name)
+
             payload = []
             for e in entries:
                 # 同名旧 revision 只是历史几何，返工审计必须排除，防止读旧缓存指纹。
                 if current_name and e.get("name") == current_name:
+                    continue
+                # 其它壳体/无关零件不是当前壳体的 internals，不能把整个装配混入审计。
+                if current_name and (
+                    _is_housing_name(str(e.get("name") or ""))
+                    or str(e.get("name") or "") not in (internal_names or set())
+                ):
                     continue
                 sf = str(e.get("step_file") or "")
                 if sf and (lib_dir / sf).exists():
@@ -2175,8 +2246,9 @@ class AgentLoop:
                 if not transient_step:
                     return failure("当前 transient 壳体导出结果不存在", None,
                                    previous_revision=previous_revision)
+                current_pose = (current_bom or {}).get("pose") or {"position": [0.0, 0.0, 0.0]}
                 payload.append({"path": transient_step, "name": current_name,
-                                "pose": {"position": [0.0, 0.0, 0.0]}})
+                                "pose": current_pose})
 
             # 无 current_name 是旧调用形态：没有足够对象时保持原有跳过行为。
             # 有 current_name 时即使只有当前壳体也执行审计，绝不因为排除旧版而绕过。
@@ -2190,6 +2262,8 @@ class AgentLoop:
                 "uses_transient_geometry": bool(current_name and transient_step),
                 "transient_step": transient_step,
                 "excluded_library_revision": previous_revision or None,
+                "current_pose": (current_bom or {}).get("pose") if current_name else None,
+                "internal_names": sorted(internal_names) if internal_names is not None else None,
             }
             return report
         except Exception as exc:  # noqa: BLE001 —— 保持旧审计通道的兼容跳过行为
@@ -2229,10 +2303,16 @@ class AgentLoop:
         # 1c) 特征契约：关键孔/圆柱面数量必须实测吻合。
         if contract:
             violations = self._check_feature_contract(contract)
+            incomplete = [v for v in violations if v.startswith("HOLE_ANALYSIS_INCOMPLETE:")]
+            if incomplete:
+                return {"success": False, "error_kind": "HOLE_ANALYSIS_INCOMPLETE",
+                        "error": "\u5b54\u8bed\u4e49\u5206\u6790\u672a\u5b8c\u6210\uff0cfinish_part \u4e0d\u80fd\u7528\u4e0d\u5b8c\u6574\u8bc1\u636e\u901a\u8fc7\u5951\u7ea6\u3002",
+                        "hole_analysis": incomplete[0],
+                        "violations": violations}
             if violations:
                 return {"success": False, "error_kind": "FEATURE_CONTRACT_MISMATCH",
-                        "error": "特征契约校验未通过：" + "；".join(violations) +
-                                 "。请补齐缺失特征（重新 hole/圆柱）或删除多余特征后重试 finish_part。",
+                        "error": "\u7279\u5f81\u5951\u7ea6\u6821\u9a8c\u672a\u901a\u8fc7\uff1a" + "\uff1b".join(violations) +
+                                 "\u3002\u8bf7\u8865\u9f50\u7f3a\u5931\u7279\u5f81\uff08\u91cd\u65b0 hole/\u5706\u67f1\uff09\u6216\u5220\u9664\u591a\u4f59\u7279\u5f81\u540e\u91cd\u8bd5 finish_part\u3002",
                         "violations": violations}
 
         # 1d) strict 几何验证门。fingerprint 来自当前 transient shape 的验证结果，

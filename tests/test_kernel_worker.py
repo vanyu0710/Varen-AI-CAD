@@ -6,9 +6,19 @@ import json
 import subprocess
 import time
 import unittest
+import importlib.util
+from pathlib import Path
+from tempfile import TemporaryDirectory
 from unittest.mock import patch
 
-from backend.kernel_worker import KernelWorkerClient, KernelWorkerError, KernelWorkerManager
+from backend import kernel_worker as kernel_worker_module
+from backend.kernel_worker import (
+    DEFAULT_KERNEL_REPO,
+    ROOT,
+    KernelWorkerClient,
+    KernelWorkerError,
+    KernelWorkerManager,
+)
 
 
 class BlockingStdout:
@@ -107,6 +117,57 @@ def _make_client(responses, *, timeout: float = 5) -> tuple[KernelWorkerClient, 
 
 
 class KernelWorkerClientTests(unittest.TestCase):
+    def test_default_kernel_repo_is_canonical_sibling(self) -> None:
+        self.assertEqual(DEFAULT_KERNEL_REPO, ROOT.parent / "mechcad-kernel")
+
+    def test_launcher_kernel_repo_is_canonical_sibling(self) -> None:
+        spec = importlib.util.spec_from_file_location(
+            "varen_launcher_under_test", ROOT / "packaging" / "varen_launcher.py"
+        )
+        self.assertIsNotNone(spec)
+        self.assertIsNotNone(spec.loader)
+        launcher = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(launcher)
+        app_root = Path("D:/VarenCAD/Varen-AI-CAD")
+        with patch.object(launcher, "app_dir", return_value=app_root):
+            self.assertEqual(launcher.kernel_repo_dir(), app_root.parent / "mechcad-kernel")
+
+    def test_spawn_rejects_missing_kernel_repo_before_popen(self) -> None:
+        with TemporaryDirectory() as temp:
+            client = KernelWorkerClient(kernel_repo=Path(temp) / "missing-kernel")
+            with self.assertRaises(KernelWorkerError) as ctx:
+                client._spawn()
+        self.assertEqual(ctx.exception.kind, "KERNEL_REPO_MISSING")
+        self.assertIn("missing-kernel", str(ctx.exception))
+
+    def test_frozen_spawn_uses_create_no_window(self) -> None:
+        """打包模式必须用 CREATE_NO_WINDOW；windowsHide 不是 Popen 参数。"""
+        client = KernelWorkerClient()
+        proc = FakeProc()
+        exe = Path("D:/VarenCAD/VarenCAD.exe")
+        with (
+            patch.object(kernel_worker_module.sys, "frozen", True, create=True),
+            patch.object(kernel_worker_module.sys, "executable", str(exe)),
+            patch.object(kernel_worker_module.subprocess, "Popen", return_value=proc) as popen,
+        ):
+            self.assertIs(client._spawn(), proc)
+
+        self.assertEqual(popen.call_count, 1)
+        kwargs = popen.call_args.kwargs
+        self.assertNotIn("windowsHide", kwargs)
+        self.assertEqual(
+            kwargs.get("creationflags"),
+            getattr(kernel_worker_module.subprocess, "CREATE_NO_WINDOW", 0),
+        )
+        self.assertEqual(kwargs["cwd"], str(exe.resolve().parent))
+
+    def test_spawn_rejects_kernel_repo_without_server_entry(self) -> None:
+        with TemporaryDirectory() as temp:
+            client = KernelWorkerClient(kernel_repo=Path(temp))
+            with self.assertRaises(KernelWorkerError) as ctx:
+                client._spawn()
+        self.assertEqual(ctx.exception.kind, "KERNEL_REPO_MISSING")
+
     def test_request_encodes_and_decodes(self) -> None:
         client, proc = _make_client([_ok_response])
         data = client.request_ok("ping")
@@ -326,9 +387,11 @@ class WorkerTimeoutTests(unittest.TestCase):
 
     def test_timeout_returns_promptly(self) -> None:
         class HungStdout:
-            def __iter__(self):
-                time.sleep(600)   # 永不产出
-                return iter(())
+            def readline(self) -> str:
+                while not proc.killed:
+                    time.sleep(0.01)
+                return ""
+
             def close(self):
                 pass
         proc = FakeProc([])

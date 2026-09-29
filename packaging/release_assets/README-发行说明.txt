@@ -1,4 +1,4 @@
-Varen CAD 打包版（Windows x64 · v0.22.4-beta）
+Varen CAD 打包版（Windows x64 · v0.22.5-beta）
 ================================
 
 一、快速开始

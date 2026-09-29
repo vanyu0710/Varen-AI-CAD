@@ -1,3 +1,12 @@
+## v0.22.5-beta - 安全加固与失败任务几何抢救 (2026-09-29)
+
+- **安全加固**：合入外部安全审计 PR；自定义 Base URL 必须自带 API Key，连接测试、模型列表、真实 chat/tool 调用都不会隐式外发 `.env` 密钥；拒绝非 HTTP(S) 与云元数据地址（含尾点变体）；WebSocket 校验 Origin；建模脚本增加应用层安全预检；artifact 路径做白名单与根目录约束。
+- **失败任务几何抢救**：Agent/模型失败但内核仍有正体积 BRep 时，原子导出 STEP/STL；失败不清空既有零件与装配，不覆盖已有可用产物，也不把 failed/partial 伪装成 success。
+- **对话消息顺序修复**：审批等待中的用户插话保持 `assistant(tool_call) → tool_result → user` 顺序，避免 OpenAI-compatible API 400/10013。
+- **多零件查看**：新增装配/当前零件视口切换、零件搜索、可见/干涉筛选、单件 solo 与恢复全部。
+- **内核仓库路径修复**：支持嵌套源码布局自动查找 MechKernel；缺失或 incomplete 时提前返回明确的 `KERNEL_REPO_MISSING`。
+- **质量门禁**：frontend 171、backend 532（3 项平台跳过）、kernel 509 全部通过；`compileall`、benchmark dry-run / flange-basic（8 步、单实体、孔契约通过）与前端 production build 通过。
+
 ## v0.22.4-beta - 自动更新、可靠导出与 Windows 启动修复 (2026-09-29)
 
 - **用户确认后的自动更新**：更新检查发现新 Release 后仅在用户点击更新时下载 ZIP 与 SHA256；哈希校验通过才进入 staging，不覆盖运行中的程序，保留 `work/` 与本地 `.env`，支持取消与回滚，完成后提示重启，不做静默后台更新或强制重启。

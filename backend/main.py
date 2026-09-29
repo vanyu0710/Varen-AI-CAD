@@ -13,6 +13,7 @@ import re
 import shutil
 import threading
 import time
+import urllib.parse
 import uuid
 import zipfile
 from datetime import datetime, timezone
@@ -114,6 +115,29 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+ALLOWED_ORIGIN_HOSTS = {"localhost", "127.0.0.1"}
+
+
+def _is_allowed_origin(origin: str | None) -> bool:
+    if not origin:
+        return True
+    try:
+        parsed = urllib.parse.urlparse(origin)
+        host = (parsed.hostname or "").lower()
+        if host in ALLOWED_ORIGIN_HOSTS:
+            return True
+        custom_host = os.getenv("MECHCAD_HOST", "127.0.0.1").lower()
+        if host == custom_host:
+            return True
+        allowed_env = os.getenv("MECHCAD_ALLOWED_ORIGINS", "")
+        if allowed_env:
+            for item in allowed_env.split(","):
+                if item.strip().lower() == origin.lower():
+                    return True
+        return False
+    except Exception:
+        return False
 
 SECRET_MASK = "***configured***"
 # 回传给 UI 的密钥掩码。带尾号（末 4 位）方便用户认出是哪把 key；短密钥不带尾号。
@@ -2127,6 +2151,10 @@ def assembly_artifact(project_id: str, filename: str):
 
 @app.websocket("/ws/projects/{project_id}")
 async def websocket(project_id: str, websocket: WebSocket):
+    origin = websocket.headers.get("origin")
+    if origin and not _is_allowed_origin(origin):
+        await websocket.close(code=1008)
+        return
     await websocket.accept()
     queue = await events.subscribe(project_id)
     try:

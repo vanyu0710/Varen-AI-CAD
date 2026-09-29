@@ -16,6 +16,7 @@ _PART_KIND = re.compile(r"^part_\d{2}_[^/\\:\0]{1,64}\.(step|stl)$")
 # v0.14 零件库文件名：vNNN_slug.step/.stl / assembly_NNN(.step/.stl) / assembly_NNN_report.json / assembly_NNN_render.png
 # v0.15.1：_report/_render 后缀与 png 此前被白名单漏掉，装配面板"交付报告"链接实际 404
 _LIB_KIND = re.compile(r"^(v\d{3}_[^/\\:\0]{1,64}|assembly_\d{3}(?:_report|_render)?)\.(step|stl|json|png)$")
+_RUN_ID_PATTERN = re.compile(r"^[A-Za-z0-9_-]{1,64}$")
 
 
 def project_parts_dir(project_id: str) -> Path:
@@ -65,6 +66,8 @@ def create_run_dir() -> tuple[str, Path]:
 
 
 def artifact_path(run_id: str, kind: str) -> Path:
+    if not _RUN_ID_PATTERN.fullmatch(run_id) or ".." in run_id:
+        raise KeyError(run_id)
     names = {
         "step": "model.step",
         "stl": "model.stl",
@@ -75,9 +78,16 @@ def artifact_path(run_id: str, kind: str) -> Path:
     if kind not in names:
         if _SNAPSHOT_KIND.match(kind):
             # agent 可视化快照（snapshot_s{步号}.png）
-            return ARTIFACT_ROOT / run_id / f"{kind}.png"
-        if _PART_KIND.match(kind):
+            target = ARTIFACT_ROOT / run_id / f"{kind}.png"
+        elif _PART_KIND.match(kind):
             # agent 逐件归档的零件 STEP/STL（文件名即 kind）
-            return ARTIFACT_ROOT / run_id / kind
-        raise KeyError(kind)
-    return ARTIFACT_ROOT / run_id / names[kind]
+            target = ARTIFACT_ROOT / run_id / kind
+        else:
+            raise KeyError(kind)
+    else:
+        target = ARTIFACT_ROOT / run_id / names[kind]
+
+    root = ARTIFACT_ROOT.resolve()
+    if not target.resolve().is_relative_to(root):
+        raise KeyError(run_id)
+    return target

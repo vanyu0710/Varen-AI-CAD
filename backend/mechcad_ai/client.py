@@ -10,9 +10,11 @@ Both retry a trailing `/v1` path when the configured base url does not already
 end with it, because several Chinese providers expose both forms.
 """
 
+import ipaddress
 import json
 import os
 import time
+import urllib.parse
 from dataclasses import dataclass, field
 from typing import Any, Callable, Iterator
 
@@ -102,6 +104,28 @@ def resolve_role_params(settings, role: str, *, default_max_tokens: int = 4096, 
     }
 
 
+def is_safe_endpoint_url(url: str) -> bool:
+    """Validate that the endpoint URL is http/https and does not target dangerous cloud metadata."""
+    try:
+        parsed = urllib.parse.urlparse(url)
+        if parsed.scheme not in ("http", "https"):
+            return False
+        host = (parsed.hostname or "").lower()
+        if not host:
+            return False
+        if host in ("169.254.169.254", "metadata.google.internal", "instance-data"):
+            return False
+        try:
+            ip = ipaddress.ip_address(host)
+            if ip.is_link_local:
+                return False
+        except ValueError:
+            pass
+        return True
+    except Exception:
+        return False
+
+
 def _openai_models_urls(base_url: str) -> list[str]:
     base_url = base_url.rstrip("/")
     urls = [f"{base_url}/models"]
@@ -125,6 +149,16 @@ def list_role_models(settings, role: str, language: str = "zh") -> dict[str, Any
     if not config["api_key"] or not config["base_url"]:
         return {"ok": False, "model_ids": [], "endpoint": None, "elapsed_ms": None,
                 "message": msg("请先填写 API Key 与 Base URL。", "Enter an API key and base URL first.")}
+    raw_base_url = str(getattr(settings, f"{role}_base_url", "") or "").strip().rstrip("/")
+    raw_api_key = str(getattr(settings, f"{role}_api_key", "") or "").strip()
+    env_base_url = os.getenv(ENV_ROLE_MAP[role]["base_url"], "").strip().rstrip("/")
+    if raw_base_url and env_base_url and raw_base_url != env_base_url and not raw_api_key:
+        return {"ok": False, "model_ids": [], "endpoint": None, "elapsed_ms": None,
+                "message": msg("自定义 Base URL 必须单独提供 API Key，禁止隐式外发系统 .env 密钥。",
+                               "A custom Base URL must provide its own API Key; sending .env default key is forbidden.")}
+    if not is_safe_endpoint_url(config["base_url"]):
+        return {"ok": False, "model_ids": [], "endpoint": None, "elapsed_ms": None,
+                "message": msg("Base URL 格式无效或指向受限的私有/元数据地址。", "Invalid Base URL or forbidden address.")}
     if config["protocol"] == "anthropic":
         urls = [f"{config['base_url']}/v1/models"]
         headers = {"X-Api-Key": config["api_key"], "Authorization": f"Bearer {config['api_key']}",
@@ -287,6 +321,28 @@ def test_model_connection(settings, role: str, language: str = "zh") -> dict[str
         return {
             "ok": False,
             "message": msg("配置不完整：请填写 API Key、Base URL 和模型名称，或确认 .env 已配置。", "Configuration is incomplete: provide API Key, Base URL, and model name, or confirm .env is configured."),
+            "endpoint": None,
+            "status_code": None,
+            "content_type": None,
+            "used_env_fallback": used_env_fallback,
+        }
+    raw_base_url = str(getattr(settings, f"{role}_base_url", "") or "").strip().rstrip("/")
+    raw_api_key = str(getattr(settings, f"{role}_api_key", "") or "").strip()
+    env_base_url = os.getenv(ENV_ROLE_MAP[role]["base_url"], "").strip().rstrip("/")
+    if raw_base_url and env_base_url and raw_base_url != env_base_url and not raw_api_key:
+        return {
+            "ok": False,
+            "message": msg("自定义 Base URL 必须单独提供 API Key，禁止隐式外发系统 .env 密钥。",
+                           "A custom Base URL must provide its own API Key; sending .env default key is forbidden."),
+            "endpoint": None,
+            "status_code": None,
+            "content_type": None,
+            "used_env_fallback": False,
+        }
+    if not is_safe_endpoint_url(config["base_url"]):
+        return {
+            "ok": False,
+            "message": msg("Base URL 格式无效或指向受限的私有/元数据地址。", "Invalid Base URL or forbidden address."),
             "endpoint": None,
             "status_code": None,
             "content_type": None,

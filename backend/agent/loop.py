@@ -17,6 +17,7 @@ loop 调 worker RPC 执行，把精简后的 StepResult 作为工具结果回喂
 
 from __future__ import annotations
 
+import ast
 import base64
 import hashlib
 import inspect
@@ -539,6 +540,44 @@ def _run_build_script_tool() -> dict[str, Any]:
             },
         },
     }
+
+
+_FORBIDDEN_SCRIPT_ATTRS = {
+    "gi_frame", "gi_code", "gi_yieldfrom",
+    "cr_frame", "cr_code", "cr_await",
+    "ag_frame", "ag_code",
+    "f_back", "f_builtins", "f_globals", "f_locals", "f_code", "f_trace",
+    "tb_frame", "tb_next", "tb_lasti", "tb_lineno",
+    "co_code", "co_consts", "co_names", "co_varnames", "co_freevars", "co_cellvars",
+}
+
+
+def _validate_modeling_script_safety(code: str) -> str | None:
+    try:
+        tree = ast.parse(code)
+    except SyntaxError as exc:
+        return f"语法错误: {exc}"
+    for node in ast.walk(tree):
+        if isinstance(node, (ast.Import, ast.ImportFrom)):
+            if isinstance(node, ast.Import):
+                modules = [alias.name.split(".")[0] for alias in node.names]
+            else:
+                modules = [(node.module or "").split(".")[0]]
+            for mod in modules:
+                if mod not in {"math"}:
+                    return f"禁止 import {mod}（只许 math）"
+        elif isinstance(node, ast.Attribute):
+            if node.attr.startswith("_") or node.attr in _FORBIDDEN_SCRIPT_ATTRS:
+                return f"禁止访问敏感/反射属性 .{node.attr}"
+        elif isinstance(node, getattr(ast, "MatchClass", ().__class__)):
+            for attr in getattr(node, "kwd_attrs", ()):
+                if attr.startswith("_") or attr in _FORBIDDEN_SCRIPT_ATTRS:
+                    return f"禁止模式匹配属性 {attr}"
+        elif isinstance(node, (ast.Yield, ast.YieldFrom)):
+            return "禁止在建模脚本中使用 yield 生成器"
+        elif isinstance(node, ast.ClassDef):
+            return "禁止在建模脚本中定义 class"
+    return None
 
 
 def _finish_part_tool() -> dict[str, Any]:
@@ -1622,10 +1661,15 @@ class AgentLoop:
                                        "error": "run_build_script 仅在计划获批准后使用。"}
         elif not code.strip():
             payload = {"success": False, "error_kind": "INVALID_REQUEST", "error": "code 不能为空。"}
+        elif _validate_modeling_script_safety(code):
+            err = _validate_modeling_script_safety(code)
+            payload = {"success": False, "error_kind": "INVALID_REQUEST", "error": f"建模脚本安全预检被拒: {err}"}
+            result.logs.append(f"run_build_script: security check failed: {err}")
         else:
             failure_policy = str(args.get("failure_policy") or "abort")
             if failure_policy not in ("abort", "best_effort"):
                 failure_policy = "abort"
+            data: dict[str, Any]
             try:
                 data = self.worker.run_script(code, name=reason[:40] or "script",
                                               failure_policy=failure_policy)
@@ -1639,8 +1683,10 @@ class AgentLoop:
                 "error": (str(data.get("error") or ""))[:4000] or None,
                 "warning": data.get("warning"),
             }
-            value = data.get("value") if isinstance(data.get("value"), dict) else {}
-            geometry = data.get("geometry_summary") if isinstance(data.get("geometry_summary"), dict) else {}
+            raw_value = data.get("value")
+            value: dict[str, Any] = raw_value if isinstance(raw_value, dict) else {}
+            raw_geom = data.get("geometry_summary")
+            geometry: dict[str, Any] = raw_geom if isinstance(raw_geom, dict) else {}
             if data.get("success"):
                 payload.update(
                     solids=value.get("solids"),

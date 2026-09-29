@@ -1,0 +1,190 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Varen CAD — Local-first mechanical CAD agent</title>
+  <meta name="description" content="Varen CAD turns mechanical design tasks into parametric B-Rep assemblies and STEP files, and blocks delivery when geometry or interference validation fails.">
+  <style>
+    :root {
+      --ink: #16212b;
+      --muted: #5d6871;
+      --line: #d8dde1;
+      --paper: #fbfbf9;
+      --white: #fff;
+      --accent: #176b75;
+      --accent-soft: #e5f4f4;
+    }
+    * { box-sizing: border-box; }
+    body { margin: 0; background: var(--paper); color: var(--ink); font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; line-height: 1.62; }
+    a { color: inherit; }
+    img { display: block; max-width: 100%; }
+    .wrap { width: min(1120px, calc(100% - 40px)); margin: 0 auto; }
+    .top { border-bottom: 1px solid var(--line); background: #fff; }
+    .top-inner { display: flex; align-items: center; justify-content: space-between; height: 58px; }
+    .brand { display: flex; align-items: center; gap: 9px; font-weight: 700; }
+    .dot { width: 12px; height: 12px; border-radius: 50%; background: var(--accent); }
+    .top-links { display: flex; gap: 20px; font-size: 14px; text-decoration: none; color: var(--muted); }
+    .top-links a:hover { color: var(--accent); }
+    .hero { padding: 58px 0 42px; }
+    .hero-grid { display: grid; grid-template-columns: 1.05fr .95fr; gap: 38px; align-items: center; }
+    .kicker { font-size: 12px; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; color: var(--accent); }
+    h1 { font-size: clamp(34px, 4.7vw, 54px); line-height: 1.12; letter-spacing: -.035em; margin: 9px 0 14px; }
+    .lede { max-width: 590px; font-size: 18px; color: var(--muted); }
+    .actions { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 24px; }
+    .button { display: inline-flex; align-items: center; min-height: 43px; padding: 0 18px; border: 1px solid var(--ink); font-size: 14px; font-weight: 650; text-decoration: none; background: #fff; }
+    .button.primary { background: var(--ink); color: #fff; }
+    .button:hover { border-color: var(--accent); color: var(--accent); }
+    .button.primary:hover { background: var(--accent); color: #fff; }
+    .meta { margin-top: 14px; color: var(--muted); font-size: 13px; }
+    .shot { border: 1px solid var(--line); background: #fff; padding: 8px; box-shadow: 0 18px 48px #16212b0d; }
+    .shot img { width: 100%; }
+    .caption { padding-top: 8px; color: var(--muted); font-size: 12px; }
+    .strip { border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); background: #fff; }
+    .strip-grid { display: grid; grid-template-columns: repeat(4, 1fr); }
+    .strip-item { padding: 17px 20px; border-right: 1px solid var(--line); }
+    .strip-item:last-child { border-right: 0; }
+    .strip-item strong { display: block; font-size: 14px; }
+    .strip-item span { font-size: 12px; color: var(--muted); }
+    section { padding: 56px 0; }
+    .section-head { max-width: 680px; margin-bottom: 24px; }
+    .eyebrow { font-size: 12px; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; color: var(--accent); }
+    h2 { font-size: clamp(24px, 3vw, 34px); line-height: 1.25; letter-spacing: -.025em; margin: 8px 0 10px; }
+    .section-head p { margin: 0; color: var(--muted); }
+    .cards { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; }
+    .card { border: 1px solid var(--line); background: #fff; padding: 18px; }
+    .card h3 { margin: 0 0 7px; font-size: 16px; }
+    .card p { margin: 0; color: var(--muted); font-size: 14px; }
+    .steps { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; }
+    .step { border-top: 2px solid var(--accent); padding-top: 13px; }
+    .step span { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 11px; color: var(--accent); }
+    .step h3 { margin: 5px 0 7px; font-size: 15px; }
+    .step p { margin: 0; color: var(--muted); font-size: 13px; }
+    .limit { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+    .limit-box { border: 1px solid var(--line); background: #fff; padding: 15px; }
+    .limit-box b { display: block; margin-bottom: 3px; }
+    .limit-box p { margin: 0; color: var(--muted); font-size: 13px; }
+    .quote { border-left: 3px solid var(--accent); background: #fff; padding: 18px 20px; font-size: 14px; }
+    .quote code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+    footer { border-top: 1px solid var(--line); background: #fff; padding: 18px 0; color: var(--muted); font-size: 13px; }
+    .footer-inner { display: flex; justify-content: space-between; gap: 18px; }
+    @media (max-width: 850px) {
+      .hero-grid, .cards, .steps { grid-template-columns: 1fr; }
+      .strip-grid { grid-template-columns: 1fr 1fr; }
+      .strip-item:nth-child(2) { border-right: 0; }
+      .strip-item:nth-child(-n+2) { border-bottom: 1px solid var(--line); }
+      .limit { grid-template-columns: 1fr; }
+      .top-links { display: none; }
+    }
+  </style>
+</head>
+<body>
+  <header class="top">
+    <div class="wrap top-inner">
+      <div class="brand"><span class="dot"></span> Varen CAD</div>
+      <nav class="top-links">
+        <a href="https://github.com/vanyu0710/Varen-AI-CAD">GitHub</a>
+        <a href="https://github.com/vanyu0710/Varen-AI-CAD/releases/latest">Download</a>
+        <a href="https://github.com/vanyu0710/Varen-AI-CAD/blob/main/KNOWN_ISSUES.md">Known limits</a>
+      </nav>
+    </div>
+  </header>
+
+  <main>
+    <section class="hero">
+      <div class="wrap hero-grid">
+        <div>
+          <div class="kicker">Show HN · Windows beta</div>
+          <h1>A local-first CAD agent that has to prove its geometry.</h1>
+          <p class="lede">Varen CAD plans a mechanical task, builds parametric B-Rep parts, checks the assembly, and exports STEP/STL. Failed geometry, feature, and interference checks are not reported as success.</p>
+          <div class="actions">
+            <a class="button primary" href="https://github.com/vanyu0710/Varen-AI-CAD/releases/latest">Download Windows beta</a>
+            <a class="button" href="https://github.com/vanyu0710/Varen-AI-CAD">View source</a>
+          </div>
+          <p class="meta">Windows x64 · AGPL-3.0-or-later · closed beta · <code>production_ready=false</code></p>
+        </div>
+        <figure class="shot" style="margin:0">
+          <img src="images/varen-workspace-chat-snapshot.jpg" alt="Varen CAD workspace with chat, model viewport, and process panel">
+          <figcaption class="caption">Agent workspace, execution history, geometry review, and export panel.</figcaption>
+        </figure>
+      </div>
+    </section>
+
+    <div class="strip">
+      <div class="wrap strip-grid">
+        <div class="strip-item"><strong>Parametric B-Rep</strong><span>OpenCascade-based geometry, not mesh-only output</span></div>
+        <div class="strip-item"><strong>STEP / STL export</strong><span>Reviewable in downstream CAD tools</span></div>
+        <div class="strip-item"><strong>Validation gates</strong><span>Single-solid, feature, and interference checks</span></div>
+        <div class="strip-item"><strong>Local project files</strong><span>Model requests go to your configured endpoint</span></div>
+      </div>
+    </div>
+
+    <section>
+      <div class="wrap">
+        <div class="section-head">
+          <div class="eyebrow">How it works</div>
+          <h2>Plan, build, check, explain.</h2>
+          <p>The agent does not receive an unrestricted Python CAD shell. It works through constrained kernel operations and records each result.</p>
+        </div>
+        <div class="steps">
+          <article class="step"><span>01</span><h3>Research</h3><p>The agent asks structured questions and performs engineering calculations when the task is underspecified.</p></article>
+          <article class="step"><span>02</span><h3>Plan</h3><p>It proposes a BOM, quantities, and key parameters. Geometry changes only after the plan is approved.</p></article>
+          <article class="step"><span>03</span><h3>Model</h3><p>Parts are created one by one as parametric B-Rep geometry with a replayable feature history.</p></article>
+          <article class="step"><span>04</span><h3>Check</h3><p>Feature contracts, solid validity, and assembly interference are checked before export.</p></article>
+        </div>
+      </div>
+    </section>
+
+    <section style="background:#fff;border-top:1px solid var(--line);border-bottom:1px solid var(--line)">
+      <div class="wrap">
+        <div class="section-head">
+          <div class="eyebrow">Why validation matters</div>
+          <h2>“The model said it worked” is not an acceptance test.</h2>
+          <p>Varen treats success as a program state, not a confident summary from the LLM.</p>
+        </div>
+        <div class="cards">
+          <article class="card"><h3>Feature contracts</h3><p>Declared holes and dimensions are compared against measured B-Rep geometry. A mismatch can reject the part.</p></article>
+          <article class="card"><h3>Single-solid checks</h3><p>Floating or disconnected geometry is not silently archived as a finished part.</p></article>
+          <article class="card"><h3>Interference checks</h3><p>Pairs are checked for hard collisions before an assembly is accepted. Meshing zones require explicit exemption.</p></article>
+        </div>
+      </div>
+    </section>
+
+    <section>
+      <div class="wrap">
+        <div class="section-head">
+          <div class="eyebrow">Five-minute test</div>
+          <h2>Run this prompt after configuring a model endpoint.</h2>
+          <p>The packaged app supports OpenAI-compatible endpoints. If you prefer, use your own provider key.</p>
+        </div>
+        <div class="quote">
+          <code>Make a 120×120×12 mm flange with a Ø30 mm center through hole and six Ø8 mm bolt holes evenly distributed on a Ø90 mm circle. State assumptions and validation results. If any check fails, do not export it as success.</code>
+        </div>
+      </div>
+    </section>
+
+    <section style="background:#fff;border-top:1px solid var(--line)">
+      <div class="wrap">
+        <div class="section-head">
+          <div class="eyebrow">Current limits</div>
+          <h2>What this beta is not.</h2>
+          <p>Varen is for concept design and rapid prototyping. Human engineering review remains mandatory.</p>
+        </div>
+        <div class="limit">
+          <div class="limit-box"><b>Not a SolidWorks replacement</b><p>There is no complete 2D drawing workflow, general mate solver, or kinematic solver.</p></div>
+          <div class="limit-box"><b>Not production-ready</b><p><code>production_ready</code> is always false. Review dimensions, materials, tolerances, and assumptions.</p></div>
+          <div class="limit-box"><b>Windows only for the package</b><p>The beta build targets Windows 10/11 x64. Other source-code paths are not verified.</p></div>
+          <div class="limit-box"><b>Model privacy is endpoint-dependent</b><p>Project files stay local, but prompts are sent to the model endpoint you configure.</p></div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    <div class="wrap footer-inner">
+      <span>Varen CAD · AGPL-3.0-or-later · Windows beta</span>
+      <span><a href="https://github.com/vanyu0710/Varen-AI-CAD/issues/new?template=task_failure.yml">Report a failed task</a></span>
+    </div>
+  </footer>
+</body>
+</html>

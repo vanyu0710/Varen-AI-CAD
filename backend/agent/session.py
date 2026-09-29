@@ -64,6 +64,52 @@ def build_user_message(text: str, image_data_url: str | None = None) -> dict[str
     return {"role": "user", "content": clipped}
 
 
+def _assistant_tool_call_ids(message: dict[str, Any]) -> list[str]:
+    """提取 assistant tool_calls 的 id；形状不完整时返回空列表。"""
+    if message.get("role") != "assistant" or not isinstance(message.get("tool_calls"), list):
+        return []
+    ids: list[str] = []
+    for call in message["tool_calls"]:
+        if isinstance(call, dict) and call.get("id"):
+            ids.append(str(call["id"]))
+    return ids
+
+
+def normalize_agent_messages(messages: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """把历史中错位的 tool result 移回对应 assistant tool call 之后。
+
+    v0.22.4 之前的审批等待逻辑会把用户插话先写入历史，得到：
+    ``assistant(tool_call) -> user -> tool_result``。OpenAI-compatible
+    接口会拒绝该顺序。这里做窄修复：非 tool 消息保持原顺序；tool result
+    按 tool_call_id 归位；缺失 result 的历史 tool call 补明确“结果缺失”
+    的占位，避免继续发出非法请求。孤儿 result（找不到 call id）删除。
+    """
+    tool_results: dict[str, dict[str, Any]] = {}
+    for message in messages:
+        if message.get("role") == "tool" and message.get("tool_call_id"):
+            call_id = str(message["tool_call_id"])
+            # 重试/旧故障可能重复落盘同一个 result；保留第一条，避免发送重复 id。
+            tool_results.setdefault(call_id, message)
+
+    normalized: list[dict[str, Any]] = []
+    for message in messages:
+        if message.get("role") == "tool":
+            # 已按 id 归位；没有 id 的孤儿 result 无法满足协议，直接剔除。
+            continue
+        normalized.append(message)
+        for call_id in _assistant_tool_call_ids(message):
+            result = tool_results.get(call_id)
+            if result is not None:
+                normalized.append(result)
+            else:
+                normalized.append({
+                    "role": "tool",
+                    "tool_call_id": call_id,
+                    "content": "历史会话修复：该 tool call 的结果缺失。请把此结果视为不可用，不要假设工具成功。",
+                })
+    return normalized
+
+
 @dataclass
 class AgentSession:
     """一个项目的 agent 会话：历史消息 + 状态 + 待插话队列。"""
@@ -259,6 +305,12 @@ class SessionRegistry:
                     session.status = "idle"  # 进程重启后运行态一律复位
                 except (ValueError, OSError):
                     session.messages = []
+                else:
+                    normalized = normalize_agent_messages(session.messages)
+                    if normalized != session.messages:
+                        session.messages = normalized
+                        # 修复后的顺序必须立即落盘，避免进程重启再次加载坏历史。
+                        session.save()
             self._sessions[project_id] = session
             return session
 

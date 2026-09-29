@@ -1745,7 +1745,11 @@ def _run_agent_thread(
             mode=mode,
             project_id=project_id,
         )
-        artifacts = _result_artifact_set(run_id, result)
+        try:
+            prior_artifacts = store.get_project(project_id).current.artifacts
+        except KeyError:
+            prior_artifacts = None
+        artifacts = _result_artifact_set(run_id, result, prior=prior_artifacts)
         snapshot = DesignSnapshot(
             feature_plan=FeaturePlanV3(
                 design_intent=text,
@@ -1793,15 +1797,34 @@ def _run_agent_thread(
             pass
 
 
-def _result_artifact_set(run_id: str, result: AgentLoopResult) -> ArtifactSet:
-    """agent 结果 → ArtifactSet（v0.12：单件槽 step/stl + 逐件归档 parts；v0.14：装配投影）。"""
+def _result_artifact_set(
+    run_id: str,
+    result: AgentLoopResult,
+    *,
+    prior: ArtifactSet | None = None,
+) -> ArtifactSet:
+    """agent 结果 → ArtifactSet（v0.12：单件槽 step/stl + 逐件归档 parts；v0.14：装配投影）。
+
+    失败/部分完成 run 不得清空上一轮已归档零件：prior parts 与本轮 result.parts
+    按零件名合并，本轮记录优先。装配摘要同理，只在本轮没有新装配结果时延续。
+    """
+    current_parts = [PartArtifact(**p) for p in result.parts]
+    if prior is not None:
+        merged: dict[str, PartArtifact] = {
+            part.part: part for part in prior.parts if part.part
+        }
+        for part in current_parts:
+            merged[part.part] = part
+        parts = list(merged.values())
+    else:
+        parts = current_parts
     return ArtifactSet(
         run_id=run_id,
         step=result.artifacts.get("step"),
         stl=result.artifacts.get("stl"),
         execution_report=result.artifacts.get("execution_report"),
-        parts=[PartArtifact(**p) for p in result.parts],
-        assembly=result.assembly,
+        parts=parts,
+        assembly=result.assembly or (prior.assembly if prior is not None else None),
     )
 
 
@@ -1810,7 +1833,10 @@ def _agent_execution_report(result: AgentLoopResult) -> ExecutionReport:
     return ExecutionReport(
         execution_ok=bool(result.ok and not result.error),
         plan_complete=bool(result.ok and not result.stopped),
-        geometry_valid=bool(result.volume or result.parts),
+        geometry_valid=bool(
+            result.volume or result.parts or result.assembly
+            or result.artifacts.get("stl") or result.artifacts.get("step")
+        ),
         production_ready=False,
         fallback_used=False,
         engine="mechkernel",

@@ -31,7 +31,16 @@ def app_dir() -> Path:
 
 
 def kernel_repo_dir() -> Path:
-    return app_dir().parent / "mechcad-kernel"
+    app = app_dir()
+    candidates = [
+        app.parent / "mechcad-kernel",
+        app.parent.parent / "mechcad-kernel",
+        app.parent.parent.parent / "mechcad-kernel",
+    ]
+    for repo in candidates:
+        if repo.is_dir() and (repo / "mech_kernel" / "server.py").is_file():
+            return repo
+    return app.parent / "mechcad-kernel"
 
 
 def run_kernel() -> int:

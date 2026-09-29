@@ -121,6 +121,9 @@ class AgentLoopResult:
     design_calculations: list[dict[str, Any]] = field(default_factory=list)
     # v0.14 F2a：export_assembly 的装配摘要（投影进 ArtifactSet）
     assembly: dict[str, Any] | None = None
+    # v0.24 健壮性：LLM/agent 失败后从存活内核抢救出的中断前几何
+    geometry_rescued: bool = False
+    rescue_export_errors: list[str] = field(default_factory=list)
     # v0.15 提示词工程（程序判态）：SUCCESS / PARTIAL / FAILED，由 _finalize 计算
     status: str = "FAILED"
 
@@ -1302,6 +1305,116 @@ class AgentLoop:
             "path": str(path),
         })
 
+    def _query_current_volume(self) -> float | None:
+        """只读查询当前 BRep 体积；失败/非有限/非正数一律视为无证据。"""
+        try:
+            data = self.worker.execute("query", {
+                "target": "_current_geometry",
+                "what": "volume",
+            })
+        except Exception as exc:  # noqa: BLE001 —— 抢救失败不掩盖原始 agent 错误
+            self.logs.append(f"抢救几何时读取体积失败: {type(exc).__name__}: {exc}")
+            return None
+        if not isinstance(data, dict) or data.get("success") is not True:
+            return None
+        raw_value = data.get("value")
+        if isinstance(raw_value, bool) or not isinstance(raw_value, (int, float)):
+            return None
+        try:
+            value = float(raw_value)
+        except (TypeError, ValueError):
+            return None
+        if not math.isfinite(value) or value <= 0.0:
+            return None
+        return value
+
+    def _atomic_rescue_export(self, path: Path, exporter, label: str) -> str:
+        """导出到临时文件，成功后原子替换；失败不触碰旧产物。"""
+        path = Path(path)
+        try:
+            has_existing = path.is_file() and path.stat().st_size > 0
+        except OSError:
+            has_existing = False
+        if has_existing:
+            # 已有可用产物优先保留：失败 run 的收尾不能覆盖用户还能加载的文件。
+            return str(path)
+        tmp_path = path.with_name(path.name + ".rescue.tmp")
+        try:
+            exporter(str(tmp_path))
+            if not tmp_path.is_file() or tmp_path.stat().st_size == 0:
+                raise ValueError(f"{label} 导出结果为空")
+            os.replace(tmp_path, path)
+            return str(path)
+        except Exception as exc:  # noqa: BLE001
+            try:
+                tmp_path.unlink(missing_ok=True)
+            except OSError:
+                pass
+            self.logs.append(f"{label} 抢救导出失败: {type(exc).__name__}: {exc}")
+            raise
+
+    def _rescue_failed_geometry(self, result: AgentLoopResult, tree: dict[str, Any]) -> None:
+        """LLM/agent 崩溃后抢救内核中已存在的几何。
+
+        这里只做恢复，不做成功化：``ok/error/error_kind`` 保持原始失败语义，
+        导出的 STL/STEP 供用户查看中断前状态。无正体积证据或导出全部失败
+        时不生成假 artifact。
+        """
+        if result.volume or result.parts or result.assembly:
+            return
+        # 只有出现过几何相关历史（或已有产物）才做只读抢救查询，避免纯问答/计划
+        # run 在收尾时额外访问 worker。
+        history = tree.get("op_history") or []
+        geometry_history = any(
+            isinstance(entry, dict) and str(entry.get("op") or "") not in READONLY_OPS
+            for entry in history
+        )
+        existing_artifacts = any(
+            (self.run_dir / name).is_file() and (self.run_dir / name).stat().st_size > 0
+            for name in ("model.stl", "model.step")
+        )
+        if not geometry_history and not existing_artifacts:
+            return
+        volume = self._query_current_volume()
+        if volume is None:
+            return
+        stl_path = self.run_dir / "model.stl"
+        step_path = self.run_dir / "model.step"
+        exported = False
+        try:
+            result.artifacts["stl"] = self._atomic_rescue_export(
+                stl_path, self.worker.export_mesh, "STL",
+            )
+            exported = True
+            self.emit("artifact_ready", "已导出中断前几何网格", {
+                "kind": "stl",
+                "path": result.artifacts["stl"],
+                "run_id": self.run_dir.name,
+                "url": f"/api/artifacts/{self.run_dir.name}/stl",
+                "rescued": True,
+            })
+        except Exception:
+            result.rescue_export_errors.append("STL:EXPORT_FAILED")
+            result.artifacts.pop("stl", None)
+
+        try:
+            result.artifacts["step"] = self._atomic_rescue_export(
+                step_path, self.worker.export_step, "STEP",
+            )
+            exported = True
+        except Exception:
+            result.rescue_export_errors.append("STEP:EXPORT_FAILED")
+            result.artifacts.pop("step", None)
+
+        if not exported:
+            self.logs.append("几何抢救失败：没有生成任何可用 STL/STEP 产物。")
+            return
+        result.volume = volume
+        result.geometry_rescued = True
+        self.logs.append(
+            f"已抢救中断前几何（volume={volume:.6f}），运行仍按失败/部分完成处理。"
+        )
+
     # ---------------------------------------------------------------- finish
     def _finalize(self, result: AgentLoopResult) -> None:
         try:
@@ -1311,6 +1424,10 @@ class AgentLoop:
             self.logs.append(f"读取 feature_tree 失败: {type(exc).__name__}: {exc}")
         result.feature_tree = tree
         result.feature_graph = tree.get("graph") or {}
+
+        # 先从存活 worker 抢救中断前几何，再做验证/判态。抢救只改变 artifact，
+        # 不改变 run 的失败语义，也不能覆盖原始 LLM/agent 错误。
+        self._rescue_failed_geometry(result, tree)
 
         validation: dict[str, Any] = {}
         if result.volume:
@@ -1366,8 +1483,9 @@ class AgentLoop:
         step_path = self.run_dir / "model.step"
         if result.volume:
             try:
-                self.worker.export_step(str(step_path))
-                result.artifacts["step"] = str(step_path)
+                result.artifacts["step"] = self._atomic_rescue_export(
+                    step_path, self.worker.export_step, "STEP"
+                )
             except Exception as exc:  # noqa: BLE001
                 self.logs.append(f"STEP 导出失败: {type(exc).__name__}: {exc}")
                 if result.ok:
@@ -1385,6 +1503,8 @@ class AgentLoop:
             "steps": result.steps,
             "final_text": result.final_text,
             "volume": result.volume,
+            "geometry_rescued": result.geometry_rescued,
+            "rescue_export_errors": result.rescue_export_errors,
             "parts": result.parts,
             "design_calculations": result.design_calculations,
             "assembly": result.assembly,
@@ -1401,7 +1521,6 @@ class AgentLoop:
         report_path = self.run_dir / "execution_report.json"
         report_path.write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8")
         result.artifacts["execution_report"] = str(report_path)
-
     # ------------------------------------------------------------- approvals
     def _request_approval(self, kind: str, op: str, args: dict[str, Any], message: str, options: dict[str, Any] | None = None) -> dict[str, Any]:
         """请求用户审批并阻塞等待；先登记拿 approval_id 再广播（前端回复依赖 id）。"""
@@ -1423,8 +1542,9 @@ class AgentLoop:
         decision = self.approvals.wait(request)
         if self.session is not None:
             self.session.set_status("running")
-            # 审批等待期间用户可能插话，答复后立即注入
-            self._absorb_pending()
+            # 不要在这里吸收插话：tool result 必须先落盘，否则会产生
+            # assistant(tool_call) → user → tool_result 的非法 OpenAI 消息顺序。
+            # pending 会保留到下一轮开头，在所有 tool result 完整写入后注入。
         return decision
 
     def _handle_ask_user(self, tool_call: ToolCall) -> dict[str, Any]:

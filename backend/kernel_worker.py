@@ -23,7 +23,37 @@ from pathlib import Path
 from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
-DEFAULT_KERNEL_REPO = ROOT.parent / "mechcad-kernel"
+
+
+def _is_kernel_repo(path: Path) -> bool:
+    """A usable kernel repo must contain the stdio server entrypoint."""
+    return path.is_dir() and (path / "mech_kernel" / "server.py").is_file()
+
+
+def kernel_repo_candidates(root: Path = ROOT) -> list[Path]:
+    """Candidate kernel locations for source checkouts at different nesting depths.
+
+    A checkout may be laid out as either ``.../mechcad-kernel`` next to
+    ``.../aicad``, or ``.../parent/mechcad-kernel`` when aicad is nested in an
+    extra project folder. The first existing, complete repo wins; otherwise the
+    conventional sibling path remains the default so error messages stay deterministic.
+    """
+    candidates = [
+        root.parent / "mechcad-kernel",
+        root.parents[1] / "mechcad-kernel",
+        root.parents[2] / "mechcad-kernel",
+    ]
+    unique: list[Path] = []
+    for candidate in candidates:
+        if candidate not in unique:
+            unique.append(candidate)
+    return unique
+
+
+DEFAULT_KERNEL_REPO = next(
+    (candidate for candidate in kernel_repo_candidates() if _is_kernel_repo(candidate)),
+    ROOT.parent / "mechcad-kernel",
+)
 # 常规 op 超时；重操作（导出/渲染/装配）用 HEAVY_TIMEOUT。
 # 旧值 120s 会让大零件导出（数千面）触发超时，且旧实现超时后读端可能
 # 永久阻塞（Windows 上 kill 后 readline 不一定返回）——已改读线程+队列。
@@ -40,7 +70,10 @@ class KernelWorkerError(RuntimeError):
 
 
 def kernel_repo_path() -> Path:
-    return Path(os.getenv("MECHCAD_KERNEL_REPO", str(DEFAULT_KERNEL_REPO))).resolve()
+    configured = os.getenv("MECHCAD_KERNEL_REPO")
+    if configured:
+        return Path(configured).resolve()
+    return DEFAULT_KERNEL_REPO.resolve()
 
 
 def kernel_python_path() -> str:

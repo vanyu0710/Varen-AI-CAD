@@ -1,5 +1,6 @@
 import ArtifactSaveLink from "./ArtifactSaveLink";
 import AssemblyCheckSummary from "./layout/AssemblyCheckSummary";
+import AssemblyPartsPanel from "./layout/AssemblyPartsPanel";
 import InterferencePairs from "./layout/InterferencePairs";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
@@ -219,6 +220,8 @@ export default function App() {
   // v0.14 F2a：装配预览显隐/选中
   const [assemblyHidden, setAssemblyHidden] = useState<string[]>([]);
   const [assemblySelected, setAssemblySelected] = useState<string | null>(null);
+  const [assemblyViewMode, setAssemblyViewMode] = useState<"assembly" | "part">("assembly");
+  const [partPreviewFile, setPartPreviewFile] = useState<string | null>(null);
   // M1 BRep 语义选择：只显示内核返回的工程语义，禁止用 STL 网格猜半径/法向/面积。
   const [semanticSelection, setSemanticSelection] = useState<SemanticSelection | null>(null);
   const [semanticSelectionLoading, setSemanticSelectionLoading] = useState(false);
@@ -804,7 +807,11 @@ export default function App() {
   useEffect(() => {
     setAssemblyHidden([]);
     setAssemblySelected(null);
-  }, [project?.project_id]);
+    setAssemblyViewMode("assembly");
+    setPartPreviewFile(null);
+  }, [project?.project_id, runId]);
+  const activeAssemblyModels = assemblyViewMode === "assembly" ? assemblyModels : undefined;
+  const partPreviewUrl = partPreviewFile && runId ? artifactUrl(runId, partPreviewFile) : "";
   const canUndo = Boolean(project?.history?.length);
   const canRedo = Boolean(project?.redo_stack?.length);
   const hasRequiredQuestions = questions.some((question) => question.required !== false && !question.answer);
@@ -1006,6 +1013,26 @@ export default function App() {
       <section className="workspace-shell">
         <div className="workspace-main">
           <section className="workspace-center" aria-label={t("app.viewport.aria")}>
+            {assemblyModels && (
+              <div className="viewport-mode-switch" role="group" aria-label={t("app.assembly.view_switch")}>
+                <button
+                  type="button"
+                  aria-pressed={assemblyViewMode === "assembly"}
+                  className={assemblyViewMode === "assembly" ? "active" : ""}
+                  onClick={() => setAssemblyViewMode("assembly")}
+                >
+                  {t("app.assembly.view.assembly")}
+                </button>
+                <button
+                  type="button"
+                  aria-pressed={assemblyViewMode === "part"}
+                  className={assemblyViewMode === "part" ? "active" : ""}
+                  onClick={() => setAssemblyViewMode("part")}
+                >
+                  {t("app.assembly.view.current_part")}
+                </button>
+              </div>
+            )}
             {agentRunning && (
               <div className="agent-runbar">
                 <span className="agent-strip-step">{t("agent.step", { step: agentSteps })}</span>
@@ -1016,19 +1043,21 @@ export default function App() {
               </div>
             )}
           <Viewport
-            objUrl={assemblyModels ? undefined : artifactUrl(viewRunId, "obj")}
-            stlUrl={assemblyModels
+            objUrl={activeAssemblyModels ? undefined : artifactUrl(viewRunId, "obj")}
+            stlUrl={activeAssemblyModels
               ? undefined
-              : liveActive
-                ? `${artifactUrl(liveMesh!.runId, "stl")}?rev=${liveMesh!.rev}`
-                : artifactUrl(viewRunId, "stl")}
-            models={assemblyModels}
+              : partPreviewUrl
+                ? partPreviewUrl
+                : liveActive
+                  ? `${artifactUrl(liveMesh!.runId, "stl")}?rev=${liveMesh!.rev}`
+                  : artifactUrl(viewRunId, "stl")}
+            models={activeAssemblyModels}
             hidden={assemblyHidden}
             selected={assemblySelected}
             onHiddenChange={setAssemblyHidden}
             onSelectChange={setAssemblySelected}
-            interfering={interferingParts}
-            semanticPickEnabled={hasModel && !assemblyModels}
+            interfering={activeAssemblyModels ? interferingParts : []}
+            semanticPickEnabled={hasModel && !activeAssemblyModels && !partPreviewUrl}
             onSemanticPick={handleSemanticPick}
             semanticSelection={semanticSelection}
             semanticSelectionLoading={semanticSelectionLoading}
@@ -1083,6 +1112,26 @@ export default function App() {
                     >STEP</ArtifactSaveLink>
                   )}
                   {part.stl_file && (
+                    <button
+                      type="button"
+                      className="artifact-part-view"
+                      aria-pressed={partPreviewFile === part.stl_file}
+                      onClick={() => {
+                        const next = partPreviewFile === part.stl_file ? null : part.stl_file || null;
+                        setPartPreviewFile(next);
+                        if (next) {
+                          setMeasureMode(false);
+                          clearMeasure();
+                          clearSemanticSelection();
+                        }
+                      }}
+                    >
+                      {partPreviewFile === part.stl_file
+                        ? t("app.artifact.viewing_part")
+                        : t("app.artifact.view_part")}
+                    </button>
+                  )}
+                  {part.stl_file && (
                     <ArtifactSaveLink
                       url={artifactUrl(runId, part.stl_file)}
                       filename={part.stl_file}
@@ -1116,46 +1165,16 @@ export default function App() {
                 selected={assemblySelected}
                 onSelectPart={(name) => setAssemblySelected((current) => (current === name ? null : name))}
               />
-              <div className="assembly-view-actions">
-                <span>{t("app.assembly.selected", { name: assemblySelected || "—" })}</span>
-                <button type="button" disabled={!assemblySelected || !assemblyModels?.some((m) => m.name === assemblySelected)}
-                  onClick={() => setAssemblyHidden((assemblyModels || []).filter((m) => m.name !== assemblySelected).map((m) => m.name))}>
-                  {t("app.assembly.isolate")}
-                </button>
-                <button type="button" disabled={!assemblyHidden.length} onClick={() => setAssemblyHidden([])}>
-                  {t("app.assembly.show_all")}
-                </button>
-              </div>
-              <details className="assembly-part-details">
-                <summary>{t("app.assembly.visibility")} · {assemblyModels?.length ?? 0}</summary>
-              <div className="assembly-parts">
-                {(project.current.artifacts.parts || []).filter((p) => p.library_stl_file).map((part) => (
-                  <div key={part.part} className={`assembly-part ${assemblySelected === part.part ? "selected" : ""}`}>
-                    <input
-                      type="checkbox"
-                      aria-label={t("app.assembly.visible_part", { name: part.part })}
-                      checked={!assemblyHidden.includes(part.part)}
-                      onChange={(event) => setAssemblyHidden((current) => (
-                        event.target.checked
-                          ? current.filter((name) => name !== part.part)
-                          : [...current, part.part]
-                      ))}
-                    />
-                    <button
-                      type="button"
-                      className="assembly-part-name"
-                      aria-pressed={assemblySelected === part.part}
-                      onClick={() => setAssemblySelected((current) => (current === part.part ? null : part.part))}
-                    >
-                      {part.part}
-                    </button>
-                    <span className="assembly-part-pose" title={JSON.stringify(part.pose || null)}>
-                      {part.pose ? `[${part.pose.position.map((v) => Math.round(v)).join(", ")}]` : "—"}
-                    </span>
-                  </div>
-                ))}
-              </div>
-              </details>
+              {(project.current.artifacts.parts || []).some((p) => p.library_stl_file) && (
+                <AssemblyPartsPanel
+                  parts={(project.current.artifacts.parts || []).filter((p) => p.library_stl_file)}
+                  hidden={assemblyHidden}
+                  selected={assemblySelected}
+                  interfering={interferingParts}
+                  onHiddenChange={setAssemblyHidden}
+                  onSelect={setAssemblySelected}
+                />
+              )}
             </div>
           )}
           </section>

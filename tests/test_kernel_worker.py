@@ -18,6 +18,8 @@ from backend.kernel_worker import (
     KernelWorkerClient,
     KernelWorkerError,
     KernelWorkerManager,
+    _is_kernel_repo,
+    kernel_repo_candidates,
 )
 
 
@@ -117,8 +119,20 @@ def _make_client(responses, *, timeout: float = 5) -> tuple[KernelWorkerClient, 
 
 
 class KernelWorkerClientTests(unittest.TestCase):
-    def test_default_kernel_repo_is_canonical_sibling(self) -> None:
-        self.assertEqual(DEFAULT_KERNEL_REPO, ROOT.parent / "mechcad-kernel")
+    def test_kernel_repo_candidates_cover_nested_and_canonical_layouts(self) -> None:
+        with TemporaryDirectory() as temp:
+            root = Path(temp) / "workspace" / "product" / "aicad"
+            candidates = kernel_repo_candidates(root)
+            self.assertEqual(candidates[0], root.parent / "mechcad-kernel")
+            self.assertEqual(candidates[1], root.parents[1] / "mechcad-kernel")
+            self.assertEqual(candidates[2], root.parents[2] / "mechcad-kernel")
+            self.assertIn(DEFAULT_KERNEL_REPO, kernel_repo_candidates())
+
+    def test_kernel_repo_path_uses_auto_selected_default(self) -> None:
+        with TemporaryDirectory() as temp:
+            kernel = Path(temp) / "mechcad-kernel"
+            with patch.object(kernel_worker_module, "DEFAULT_KERNEL_REPO", kernel):
+                self.assertEqual(kernel_worker_module.kernel_repo_path(), kernel.resolve())
 
     def test_launcher_kernel_repo_is_canonical_sibling(self) -> None:
         spec = importlib.util.spec_from_file_location(
@@ -131,6 +145,22 @@ class KernelWorkerClientTests(unittest.TestCase):
         app_root = Path("D:/VarenCAD/Varen-AI-CAD")
         with patch.object(launcher, "app_dir", return_value=app_root):
             self.assertEqual(launcher.kernel_repo_dir(), app_root.parent / "mechcad-kernel")
+
+    def test_launcher_kernel_repo_finds_nested_source_checkout(self) -> None:
+        spec = importlib.util.spec_from_file_location(
+            "varen_launcher_nested_under_test", ROOT / "packaging" / "varen_launcher.py"
+        )
+        self.assertIsNotNone(spec)
+        self.assertIsNotNone(spec.loader)
+        launcher = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(launcher)
+        with TemporaryDirectory() as temp:
+            app_root = Path(temp) / "product" / "app"
+            kernel = Path(temp) / "mechcad-kernel"
+            (kernel / "mech_kernel").mkdir(parents=True)
+            (kernel / "mech_kernel" / "server.py").write_text("", encoding="utf-8")
+            with patch.object(launcher, "app_dir", return_value=app_root):
+                self.assertEqual(launcher.kernel_repo_dir(), kernel)
 
     def test_spawn_rejects_missing_kernel_repo_before_popen(self) -> None:
         with TemporaryDirectory() as temp:

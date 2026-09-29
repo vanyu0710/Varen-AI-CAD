@@ -105,12 +105,13 @@ def resolve_role_params(settings, role: str, *, default_max_tokens: int = 4096, 
 
 
 def is_safe_endpoint_url(url: str) -> bool:
-    """Validate that the endpoint URL is http/https and does not target dangerous cloud metadata."""
+    """Validate that the endpoint URL is http/https and does not target cloud metadata."""
     try:
         parsed = urllib.parse.urlparse(url)
         if parsed.scheme not in ("http", "https"):
             return False
-        host = (parsed.hostname or "").lower()
+        # A trailing DNS dot is still the same host (169.254.169.254.).
+        host = (parsed.hostname or "").lower().rstrip(".")
         if not host:
             return False
         if host in ("169.254.169.254", "metadata.google.internal", "instance-data"):
@@ -124,6 +125,31 @@ def is_safe_endpoint_url(url: str) -> bool:
         return True
     except Exception:
         return False
+
+
+def validate_role_call_config(settings, role: str) -> None:
+    """Reject unsafe model calls before any credentials are attached.
+
+    Connection diagnostics already had this guard; the same rule must also apply to
+    real chat/tool calls. Otherwise changing a project's Base URL without entering
+    its own API key could implicitly send the .env key to that new host.
+    """
+    if role not in ENV_ROLE_MAP:
+        raise ValueError(f"unsupported model role: {role}")
+    raw_base_url = str(getattr(settings, f"{role}_base_url", "") or "").strip().rstrip("/")
+    raw_api_key = str(getattr(settings, f"{role}_api_key", "") or "").strip()
+    env_base_url = os.getenv(ENV_ROLE_MAP[role]["base_url"], "").strip().rstrip("/")
+    if raw_base_url and env_base_url and raw_base_url != env_base_url and not raw_api_key:
+        raise ApiCallError(
+            "custom Base URL requires its own API key; refusing to send the .env key",
+            retryable=False,
+        )
+    endpoint = raw_base_url or env_base_url
+    if endpoint and not is_safe_endpoint_url(endpoint):
+        raise ApiCallError(
+            "model Base URL is invalid or targets a restricted metadata endpoint",
+            retryable=False,
+        )
 
 
 def _openai_models_urls(base_url: str) -> list[str]:
@@ -459,6 +485,7 @@ def chat_completion(
     the final user message when ``image_base64`` is given. Unspecified generation
     params come from the project model config, then ``MECHCAD_{ROLE}_*`` env.
     """
+    validate_role_call_config(settings, role)
     config = resolve_role_config(settings, role)
     if not config["api_key"]:
         raise ApiCallError(f"{role} API key is not configured")
@@ -699,6 +726,7 @@ def chat_completion_with_tools(
     返回值仍是聚合后的同一个 ``ToolCallRound``，循环逻辑不变。流开始后出错
     不再重试（避免重复回调），仅首块到达前的失败可重试。
     """
+    validate_role_call_config(settings, role)
     config = resolve_role_config(settings, role)
     if not config["api_key"]:
         raise ApiCallError(f"{role} API key is not configured")

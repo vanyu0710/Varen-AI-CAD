@@ -5,7 +5,14 @@ import pytest
 from unittest.mock import MagicMock
 
 from backend.agent.loop import _validate_modeling_script_safety
-from backend.mechcad_ai.client import is_safe_endpoint_url, list_role_models, test_model_connection as run_test_model_connection
+from backend.mechcad_ai.client import (
+    ApiCallError,
+    chat_completion,
+    chat_completion_with_tools,
+    is_safe_endpoint_url,
+    list_role_models,
+    test_model_connection as run_test_model_connection,
+)
 from backend.storage import artifact_path
 from backend.main import _is_allowed_origin
 
@@ -91,3 +98,30 @@ def test_websocket_origin_check(monkeypatch):
     assert _is_allowed_origin("http://127.0.0.1:8001")
     assert not _is_allowed_origin("https://evil-hacker.com")
     assert not _is_allowed_origin("http://phishing.site:8001")
+
+
+def test_real_model_calls_do_not_leak_env_key_to_custom_base_url(monkeypatch):
+    monkeypatch.setenv("MECHCAD_PLANNER_API_KEY", "secret-super-key-12345")
+    monkeypatch.setenv("MECHCAD_PLANNER_BASE_URL", "https://api.openai.com/v1")
+    settings = MagicMock(
+        planner_protocol="openai",
+        planner_base_url="https://attacker-controlled-server.com/v1",
+        planner_api_key="",
+        planner_model="custom-model",
+    )
+    post = MagicMock()
+    monkeypatch.setattr("backend.mechcad_ai.client.requests.post", post)
+
+    with pytest.raises(ApiCallError) as chat_error:
+        chat_completion(settings, "planner", [{"role": "user", "content": "hi"}])
+    assert "own API key" in str(chat_error.value)
+
+    with pytest.raises(ApiCallError) as tool_error:
+        chat_completion_with_tools(settings, "planner", [{"role": "user", "content": "hi"}], [])
+    assert "own API key" in str(tool_error.value)
+    post.assert_not_called()
+
+
+def test_safe_endpoint_url_rejects_trailing_dot_metadata_host():
+    assert not is_safe_endpoint_url("http://169.254.169.254./latest/meta-data")
+    assert not is_safe_endpoint_url("http://metadata.google.internal./computeMetadata/v1")

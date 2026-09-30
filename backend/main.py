@@ -181,11 +181,78 @@ def _schedule_publish(event: StageEvent) -> None:
     asyncio.ensure_future(events.publish(event))
 
 
+# Agent 可观察阶段：只暴露可审计的状态，不暴露模型的隐藏思维。
+_AGENT_PHASE_LABELS = {
+    "idle": ("就绪", "Ready"),
+    "queued": ("排队中", "Queued"),
+    "analyzing": ("分析中", "Analyzing"),
+    "researching": ("调研中", "Researching"),
+    "planning": ("规划中", "Planning"),
+    "awaiting_user": ("等待确认", "Waiting for confirmation"),
+    "executing": ("建模中", "Modeling"),
+    "validating": ("校验中", "Validating"),
+    "repairing": ("修复中", "Repairing"),
+    "completed": ("已完成", "Completed"),
+    "partial": ("部分完成", "Partially complete"),
+    "failed": ("失败", "Failed"),
+    "stopped": ("已停止", "Stopped"),
+}
+
+
+def _agent_phase_for_event(event_type: str, payload: dict | None = None) -> str:
+    """Map internal agent events to a small, stable UI state machine."""
+    data = payload or {}
+    if event_type == "agent_started":
+        return "analyzing"
+    if event_type == "agent_queued":
+        return "queued"
+    if event_type == "agent_done":
+        if data.get("stopped"):
+            return "stopped"
+        if data.get("ok"):
+            return "completed" if not data.get("partial") else "partial"
+        return "failed"
+    if event_type in {"approval_required", "question_required"}:
+        return "awaiting_user"
+    if event_type == "plan_updated":
+        return "planning"
+    if event_type in {"agent_text_delta", "agent_snapshot"}:
+        return "analyzing"
+    if event_type == "artifact_ready":
+        return "executing"
+    if event_type == "error":
+        return "failed"
+    if event_type == "agent_step":
+        op = str(data.get("op") or "").lower()
+        message = str(data.get("message") or "").lower()
+        combined = f"{op} {message}"
+        if any(token in combined for token in ("ask_user", "approval", "question", "等待")):
+            return "awaiting_user"
+        if any(token in combined for token in ("validate", "validation", "校验", "检查")):
+            return "validating"
+        if any(token in combined for token in ("repair", "fix", "autofix", "修复")):
+            return "repairing"
+        if any(token in combined for token in ("research", "design_calculate", "housing_design", "调研", "计算")):
+            return "researching"
+        return "executing"
+    return "analyzing"
+
+
+def _phase_payload(event_type: str, payload: dict | None, language: str = "zh") -> dict:
+    data = dict(payload or {})
+    phase = str(data.get("phase") or _agent_phase_for_event(event_type, data))
+    data["phase"] = phase
+    labels = _AGENT_PHASE_LABELS.get(phase, _AGENT_PHASE_LABELS["analyzing"])
+    data.setdefault("phase_label", labels[1] if language == "en" else labels[0])
+    return data
+
+
 def _emit_from_thread_factory(project_id: str, loop: asyncio.AbstractEventLoop):
     """agent 线程用：把事件安全投递回主事件循环的 EventBus。"""
 
     def emit(event_type: str, message: str, payload: dict | None = None) -> None:
-        event = StageEvent(type=event_type, project_id=project_id, stage="agent", message=message, payload=payload or {})
+        event_payload = _phase_payload(event_type, payload)
+        event = StageEvent(type=event_type, project_id=project_id, stage="agent", message=message, payload=event_payload)
         try:
             loop.call_soon_threadsafe(_schedule_publish, event)
         except RuntimeError:
@@ -1640,7 +1707,7 @@ async def agent_message(project_id: str, request: AgentMessageRequest):
         await _emit(
             project_id, "agent_queued", "agent",
             _loc(request.language, "消息已加入队列，将在当前步骤结束后生效。", "Message queued; takes effect after the current step."),
-            {"queued": True},
+            _phase_payload("agent_queued", {"queued": True}, request.language),
         )
         return {"ok": True, "queued": True, "project_id": project_id}
     mode = "plan" if (request.mode == "plan" or _looks_multipart_task(request.text)) else "auto"
@@ -2246,8 +2313,9 @@ def _public_project(project):
 
 
 async def _emit(project_id: str, event_type: str, stage: str, message: str, payload: dict | None = None) -> None:
+    data = _phase_payload(event_type, payload) if stage == "agent" else (payload or {})
     await events.publish(
-        StageEvent(type=event_type, project_id=project_id, stage=stage, message=message, payload=payload or {})
+        StageEvent(type=event_type, project_id=project_id, stage=stage, message=message, payload=data)
     )
 
 

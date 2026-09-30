@@ -44,6 +44,15 @@ class AgentEndpointTests(unittest.TestCase):
 
         return runner
 
+
+    def test_agent_event_phase_mapping_is_stable(self) -> None:
+        self.assertEqual(main_module._phase_payload("agent_queued", {}, "zh")["phase"], "queued")
+        self.assertEqual(main_module._phase_payload("plan_updated", {}, "zh")["phase"], "planning")
+        self.assertEqual(main_module._phase_payload("approval_required", {}, "zh")["phase"], "awaiting_user")
+        self.assertEqual(main_module._phase_payload("agent_step", {"op": "validate_geometry"}, "zh")["phase"], "validating")
+        self.assertEqual(main_module._phase_payload("agent_step", {"op": "run_build_script"}, "zh")["phase"], "executing")
+        self.assertEqual(main_module._phase_payload("agent_done", {"ok": True}, "en")["phase_label"], "Completed")
+
     def test_start_and_conflict_and_stop(self) -> None:
         release = threading.Event()
         with patch.object(main_module, "_run_agent_thread", side_effect=self._blocking_runner(release)):

@@ -2915,3 +2915,29 @@
   font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
   color: var(--ink-soft);
 }
+.kernel-tree-row { display: block; border-bottom: 1px solid rgba(120,180,215,.1); }
+.kernel-tree-main { display:flex; align-items:center; min-width:0; }
+.kernel-tree-select { min-height:34px; padding:5px 6px; }
+.kernel-tree-expander,.kernel-tree-expander-spacer { width:20px; height:24px; flex:none; display:inline-grid; place-items:center; border:0; background:transparent; color:var(--ink-muted); }
+.kernel-tree-expander { cursor:pointer; border-radius:4px; }
+.kernel-tree-expander:hover,.kernel-tree-action:hover { color:var(--jade); background:rgba(56,195,232,.12); }
+.kernel-tree-action { width:25px; height:25px; flex:none; border:0; border-radius:4px; background:transparent; color:var(--ink-muted); cursor:pointer; }
+.kernel-tree-row.hidden .kernel-tree-label,.kernel-tree-row.hidden .kernel-tree-detail { opacity:.48; }
+.kernel-tree-row.hidden .kernel-tree-action:first-of-type { color:#e8b85b; }
+.agent-status-card { flex:none; margin:8px 10px; padding:10px 12px; border:1px solid var(--line); border-radius:8px; background:rgba(10,22,42,.72); color:var(--ink-soft); }
+.agent-status-head { display:flex; align-items:center; gap:9px; }
+.agent-status-head > div { display:grid; gap:2px; }
+.agent-status-head strong { color:var(--ink); font-size:12px; }
+.agent-status-head > div span,.agent-status-step { color:var(--ink-muted); font-size:10px; }
+.agent-status-step { margin-left:auto; }
+.agent-status-orb { width:9px; height:9px; border-radius:50%; background:var(--jade); box-shadow:0 0 0 3px rgba(56,195,232,.12); }
+.agent-status-card.running .agent-status-orb { animation:agent-pulse 1.4s infinite; }
+.agent-status-card.failed .agent-status-orb { background:#ed7568; }
+.agent-status-card.awaiting .agent-status-orb { background:#e8b85b; }
+@keyframes agent-pulse { 50% { box-shadow:0 0 0 6px rgba(56,195,232,0); } }
+.agent-status-track { height:3px; margin:9px 0 7px; overflow:hidden; border-radius:4px; background:rgba(140,170,200,.16); }
+.agent-status-track span { display:block; height:100%; background:var(--jade); transition:width .25s ease; }
+.agent-status-summary { overflow:hidden; color:var(--ink-soft); font-size:11px; text-overflow:ellipsis; white-space:nowrap; }
+.agent-status-stages { display:flex; flex-wrap:wrap; gap:5px 10px; margin-top:8px; color:var(--ink-muted); font-size:9px; }
+.agent-status-stages .current { color:var(--jade); }
+.agent-status-stages .done { color:#8fc9ab; }

@@ -114,6 +114,9 @@ export default function App() {
     agentRunning,
     agentSteps,
     agentLastOp,
+    agentPhase,
+    agentPhaseLabel,
+    setAgentPhase,
     pendingApprovals,
     chat,
     plan: agentPlan,
@@ -600,6 +603,10 @@ export default function App() {
       const event = JSON.parse(message.data);
       if (typeof event.type === "string" && event.type.startsWith("process_step_") && event.payload?.process_step) {
         addProcessStep(event.payload.process_step as ProcessStep);
+      }
+      if (event.payload?.phase) {
+        const phase = String(event.payload.phase) as Parameters<typeof setAgentPhase>[0];
+        setAgentPhase(phase, String(event.payload.phase_label || ""), String(event.message || ""));
       }
       if (event.type === "agent_text_delta") {
         appendChatAssistantDelta(String(event.message ?? event.payload?.text ?? ""));
@@ -1234,6 +1241,12 @@ export default function App() {
           isPlannerConfigured={isPlannerConfigured}
           onImageChange={setImageFile}
           inputRef={chatInputRef}
+          events={events}
+          processSteps={processSteps}
+          agentSteps={agentSteps}
+          agentLastOp={agentLastOp}
+          agentPhase={agentPhase}
+          agentPhaseLabel={agentPhaseLabel}
         />
       </section>
 

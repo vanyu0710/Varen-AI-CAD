@@ -56,6 +56,9 @@ type Props = {
   onSaveKernelFeature: (featureId: string, newParams: Record<string, unknown>) => void;
   onDeleteKernelFeature: (featureId: string) => void;
   onSelectProcessStep?: (featureId: string) => void;
+  onToggleKernelFeatureVisibility?: (featureId: string, visible: boolean) => void;
+  onIsolateKernelFeature?: (featureId: string) => void;
+  onFocusKernelFeature?: (featureId: string) => void;
 };
 
 export default function StructurePanel(props: Props) {
@@ -84,6 +87,9 @@ export default function StructurePanel(props: Props) {
     onSaveKernelFeature,
     onDeleteKernelFeature,
     onSelectProcessStep,
+    onToggleKernelFeatureVisibility,
+    onIsolateKernelFeature,
+    onFocusKernelFeature,
   } = props;
 
   const tabs: { id: Tab; labelKey: string }[] = [
@@ -136,6 +142,9 @@ export default function StructurePanel(props: Props) {
                 selectedFeatureId={selectedFeatureId}
                 onSelectFeature={onSelectKernelFeature}
                 onDeleteFeature={onDeleteKernelFeature}
+                onToggleVisibility={onToggleKernelFeatureVisibility}
+                onIsolateFeature={onIsolateKernelFeature}
+                onFocusFeature={onFocusKernelFeature}
               />
             </div>
           )}

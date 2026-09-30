@@ -5,6 +5,11 @@ export type Lang = "zh" | "en";
 export type ManagerTab = "feature" | "property" | "configuration";
 export type TaskTab = "assistant" | "review" | "process" | "logs" | "plan" | "export";
 export type StartupMode = "always" | "first" | "off";
+export type AgentPhase =
+  | "idle" | "queued" | "analyzing" | "researching" | "planning"
+  | "awaiting_user" | "executing" | "validating" | "repairing"
+  | "completed" | "partial" | "failed" | "stopped";
+export type AgentPhaseEvent = { phase: AgentPhase; label: string; message: string; at: number };
 
 /** agent 会话流里的工具调用卡片（对应 WS agent_step 事件）。 */
 export type ChatToolCard = {
@@ -119,6 +124,9 @@ type AppState = {
   agentRunning: boolean;
   agentSteps: number;
   agentLastOp: string;
+  agentPhase: AgentPhase;
+  agentPhaseLabel: string;
+  agentPhaseHistory: AgentPhaseEvent[];
   pendingApprovals: Approval[];
   chat: ChatEntry[];
   plan: PlanState | null;
@@ -146,6 +154,7 @@ type AppState = {
   setAgentRunning: (running: boolean) => void;
   setAgentSteps: (steps: number) => void;
   setAgentLastOp: (op: string) => void;
+  setAgentPhase: (phase: AgentPhase, label?: string, message?: string) => void;
   setPendingApprovals: (approvals: Approval[]) => void;
   setPlan: (plan: PlanState | null) => void;
   setChat: (entries: ChatEntry[]) => void;
@@ -178,6 +187,9 @@ export const PROJECT_SCOPED_RESET = {
   agentRunning: false,
   agentSteps: 0,
   agentLastOp: "",
+  agentPhase: "idle",
+  agentPhaseLabel: "就绪",
+  agentPhaseHistory: [],
 } satisfies Partial<AppState>;
 
 function nextChatId(role: string) {
@@ -242,6 +254,9 @@ export const useAppStore = create<AppState>((set) => ({
   agentRunning: false,
   agentSteps: 0,
   agentLastOp: "",
+  agentPhase: "idle",
+  agentPhaseLabel: "就绪",
+  agentPhaseHistory: [],
   pendingApprovals: [],
   chat: [],
   plan: null,
@@ -301,6 +316,11 @@ export const useAppStore = create<AppState>((set) => ({
   setAgentRunning: (agentRunning) => set({ agentRunning }),
   setAgentSteps: (agentSteps) => set({ agentSteps }),
   setAgentLastOp: (agentLastOp) => set({ agentLastOp }),
+  setAgentPhase: (agentPhase, label, message = "") => set((state) => ({
+    agentPhase,
+    agentPhaseLabel: label || state.agentPhaseLabel,
+    agentPhaseHistory: [...state.agentPhaseHistory, { phase: agentPhase, label: label || state.agentPhaseLabel, message, at: Date.now() }].slice(-24),
+  })),
   setPendingApprovals: (pendingApprovals) => set({ pendingApprovals }),
   setPlan: (plan) => set({ plan }),
   setChat: (chat) => set({ chat }),

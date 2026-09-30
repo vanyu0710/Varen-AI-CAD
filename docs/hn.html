@@ -26,6 +26,8 @@
     .dot { width: 12px; height: 12px; border-radius: 50%; background: var(--accent); }
     .top-links { display: flex; gap: 20px; font-size: 14px; text-decoration: none; color: var(--muted); }
     .top-links a:hover { color: var(--accent); }
+    .lang-switch { min-height: 34px; padding: 0 12px; border: 1px solid var(--line); background: #fff; color: var(--muted); font: inherit; font-size: 13px; font-weight: 650; cursor: pointer; }
+    .lang-switch:hover { border-color: var(--accent); color: var(--accent); }
     .hero { padding: 58px 0 42px; }
     .hero-grid { display: grid; grid-template-columns: 1.05fr .95fr; gap: 38px; align-items: center; }
     .kicker { font-size: 12px; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; color: var(--accent); }
@@ -83,9 +85,10 @@
     <div class="wrap top-inner">
       <div class="brand"><span class="dot"></span> Varen CAD</div>
       <nav class="top-links">
-        <a href="https://github.com/vanyu0710/Varen-AI-CAD">GitHub</a>
-        <a href="https://github.com/vanyu0710/Varen-AI-CAD/releases/latest">Download</a>
-        <a href="https://github.com/vanyu0710/Varen-AI-CAD/blob/main/KNOWN_ISSUES.md">Known limits</a>
+        <a data-i18n="nav_github" href="https://github.com/vanyu0710/Varen-AI-CAD">GitHub</a>
+        <a data-i18n="nav_download" href="https://github.com/vanyu0710/Varen-AI-CAD/releases/latest">Download</a>
+        <a data-i18n="nav_limits" href="https://github.com/vanyu0710/Varen-AI-CAD/blob/main/KNOWN_ISSUES.md">Known limits</a>
+        <button id="lang-toggle" class="lang-switch" type="button" aria-label="Switch language">中文</button>
       </nav>
     </div>
   </header>
@@ -94,43 +97,43 @@
     <section class="hero">
       <div class="wrap hero-grid">
         <div>
-          <div class="kicker">Show HN · Windows beta</div>
-          <h1>A local-first CAD agent that has to prove its geometry.</h1>
-          <p class="lede">Varen CAD plans a mechanical task, builds parametric B-Rep parts, checks the assembly, and exports STEP/STL. Failed geometry, feature, and interference checks are not reported as success.</p>
+          <div class="kicker" data-i18n="hero_kicker">Show HN · Windows beta</div>
+          <h1 data-i18n="hero_title">A local-first CAD agent that has to prove its geometry.</h1>
+          <p class="lede" data-i18n="hero_lede">Varen CAD plans a mechanical task, builds parametric B-Rep parts, checks the assembly, and exports STEP/STL. Failed geometry, feature, and interference checks are not reported as success.</p>
           <div class="actions">
-            <a class="button primary" href="https://github.com/vanyu0710/Varen-AI-CAD/releases/latest">Download Windows beta</a>
-            <a class="button" href="https://github.com/vanyu0710/Varen-AI-CAD">View source</a>
+            <a class="button primary" data-i18n="hero_download" href="https://github.com/vanyu0710/Varen-AI-CAD/releases/latest">Download Windows beta</a>
+            <a class="button" data-i18n="hero_source" href="https://github.com/vanyu0710/Varen-AI-CAD">View source</a>
           </div>
-          <p class="meta">Windows x64 · AGPL-3.0-or-later · closed beta · <code>production_ready=false</code></p>
+          <p class="meta" data-i18n="hero_meta">Windows x64 · AGPL-3.0-or-later · closed beta · <code>production_ready=false</code></p>
         </div>
         <figure class="shot" style="margin:0">
-          <img src="images/varen-workspace-chat-snapshot.jpg" alt="Varen CAD workspace with chat, model viewport, and process panel">
-          <figcaption class="caption">Agent workspace, execution history, geometry review, and export panel.</figcaption>
+          <img src="images/varen-hn-aircraft-engine.jpg" data-i18n-alt="hero_image_alt" alt="Varen CAD building an aircraft piston engine assembly in its workspace">
+          <figcaption class="caption" data-i18n="hero_caption">Aircraft piston engine demo in the agent workspace, with execution history and geometry review.</figcaption>
         </figure>
       </div>
     </section>
 
     <div class="strip">
       <div class="wrap strip-grid">
-        <div class="strip-item"><strong>Parametric B-Rep</strong><span>OpenCascade-based geometry, not mesh-only output</span></div>
-        <div class="strip-item"><strong>STEP / STL export</strong><span>Reviewable in downstream CAD tools</span></div>
-        <div class="strip-item"><strong>Validation gates</strong><span>Single-solid, feature, and interference checks</span></div>
-        <div class="strip-item"><strong>Local project files</strong><span>Model requests go to your configured endpoint</span></div>
+        <div class="strip-item"><strong data-i18n="strip_brep_title">Parametric B-Rep</strong><span data-i18n="strip_brep_text">OpenCascade-based geometry, not mesh-only output</span></div>
+        <div class="strip-item"><strong data-i18n="strip_export_title">STEP / STL export</strong><span data-i18n="strip_export_text">Reviewable in downstream CAD tools</span></div>
+        <div class="strip-item"><strong data-i18n="strip_validation_title">Validation gates</strong><span data-i18n="strip_validation_text">Single-solid, feature, and interference checks</span></div>
+        <div class="strip-item"><strong data-i18n="strip_local_title">Local project files</strong><span data-i18n="strip_local_text">Model requests go to your configured endpoint</span></div>
       </div>
     </div>
 
     <section>
       <div class="wrap">
         <div class="section-head">
-          <div class="eyebrow">How it works</div>
-          <h2>Plan, build, check, explain.</h2>
-          <p>The agent does not receive an unrestricted Python CAD shell. It works through constrained kernel operations and records each result.</p>
+          <div class="eyebrow" data-i18n="how_eyebrow">How it works</div>
+          <h2 data-i18n="how_title">Plan, build, check, explain.</h2>
+          <p data-i18n="how_intro">The agent does not receive an unrestricted Python CAD shell. It works through constrained kernel operations and records each result.</p>
         </div>
         <div class="steps">
-          <article class="step"><span>01</span><h3>Research</h3><p>The agent asks structured questions and performs engineering calculations when the task is underspecified.</p></article>
-          <article class="step"><span>02</span><h3>Plan</h3><p>It proposes a BOM, quantities, and key parameters. Geometry changes only after the plan is approved.</p></article>
-          <article class="step"><span>03</span><h3>Model</h3><p>Parts are created one by one as parametric B-Rep geometry with a replayable feature history.</p></article>
-          <article class="step"><span>04</span><h3>Check</h3><p>Feature contracts, solid validity, and assembly interference are checked before export.</p></article>
+          <article class="step"><span>01</span><h3 data-i18n="step_research_title">Research</h3><p data-i18n="step_research_text">The agent asks structured questions and performs engineering calculations when the task is underspecified.</p></article>
+          <article class="step"><span>02</span><h3 data-i18n="step_plan_title">Plan</h3><p data-i18n="step_plan_text">It proposes a BOM, quantities, and key parameters. Geometry changes only after the plan is approved.</p></article>
+          <article class="step"><span>03</span><h3 data-i18n="step_model_title">Model</h3><p data-i18n="step_model_text">Parts are created one by one as parametric B-Rep geometry with a replayable feature history.</p></article>
+          <article class="step"><span>04</span><h3 data-i18n="step_check_title">Check</h3><p data-i18n="step_check_text">Feature contracts, solid validity, and assembly interference are checked before export.</p></article>
         </div>
       </div>
     </section>
@@ -138,14 +141,14 @@
     <section style="background:#fff;border-top:1px solid var(--line);border-bottom:1px solid var(--line)">
       <div class="wrap">
         <div class="section-head">
-          <div class="eyebrow">Why validation matters</div>
-          <h2>“The model said it worked” is not an acceptance test.</h2>
-          <p>Varen treats success as a program state, not a confident summary from the LLM.</p>
+          <div class="eyebrow" data-i18n="why_eyebrow">Why validation matters</div>
+          <h2 data-i18n="why_title">“The model said it worked” is not an acceptance test.</h2>
+          <p data-i18n="why_intro">Varen treats success as a program state, not a confident summary from the LLM.</p>
         </div>
         <div class="cards">
-          <article class="card"><h3>Feature contracts</h3><p>Declared holes and dimensions are compared against measured B-Rep geometry. A mismatch can reject the part.</p></article>
-          <article class="card"><h3>Single-solid checks</h3><p>Floating or disconnected geometry is not silently archived as a finished part.</p></article>
-          <article class="card"><h3>Interference checks</h3><p>Pairs are checked for hard collisions before an assembly is accepted. Meshing zones require explicit exemption.</p></article>
+          <article class="card"><h3 data-i18n="card_feature_title">Feature contracts</h3><p data-i18n="card_feature_text">Declared holes and dimensions are compared against measured B-Rep geometry. A mismatch can reject the part.</p></article>
+          <article class="card"><h3 data-i18n="card_solid_title">Single-solid checks</h3><p data-i18n="card_solid_text">Floating or disconnected geometry is not silently archived as a finished part.</p></article>
+          <article class="card"><h3 data-i18n="card_interference_title">Interference checks</h3><p data-i18n="card_interference_text">Pairs are checked for hard collisions before an assembly is accepted. Meshing zones require explicit exemption.</p></article>
         </div>
       </div>
     </section>
@@ -153,12 +156,12 @@
     <section>
       <div class="wrap">
         <div class="section-head">
-          <div class="eyebrow">Five-minute test</div>
-          <h2>Run this prompt after configuring a model endpoint.</h2>
-          <p>The packaged app supports OpenAI-compatible endpoints. If you prefer, use your own provider key.</p>
+          <div class="eyebrow" data-i18n="test_eyebrow">Five-minute test</div>
+          <h2 data-i18n="test_title">Run this prompt after configuring a model endpoint.</h2>
+          <p data-i18n="test_intro">The packaged app supports OpenAI-compatible endpoints. If you prefer, use your own provider key.</p>
         </div>
         <div class="quote">
-          <code>Make a 120×120×12 mm flange with a Ø30 mm center through hole and six Ø8 mm bolt holes evenly distributed on a Ø90 mm circle. State assumptions and validation results. If any check fails, do not export it as success.</code>
+          <code data-i18n="test_prompt">Make a 120×120×12 mm flange with a Ø30 mm center through hole and six Ø8 mm bolt holes evenly distributed on a Ø90 mm circle. State assumptions and validation results. If any check fails, do not export it as success.</code>
         </div>
       </div>
     </section>
@@ -166,15 +169,15 @@
     <section style="background:#fff;border-top:1px solid var(--line)">
       <div class="wrap">
         <div class="section-head">
-          <div class="eyebrow">Current limits</div>
-          <h2>What this beta is not.</h2>
-          <p>Varen is for concept design and rapid prototyping. Human engineering review remains mandatory.</p>
+          <div class="eyebrow" data-i18n="limits_eyebrow">Current limits</div>
+          <h2 data-i18n="limits_title">What this beta is not.</h2>
+          <p data-i18n="limits_intro">Varen is for concept design and rapid prototyping. Human engineering review remains mandatory.</p>
         </div>
         <div class="limit">
-          <div class="limit-box"><b>Not a SolidWorks replacement</b><p>There is no complete 2D drawing workflow, general mate solver, or kinematic solver.</p></div>
-          <div class="limit-box"><b>Not production-ready</b><p><code>production_ready</code> is always false. Review dimensions, materials, tolerances, and assumptions.</p></div>
-          <div class="limit-box"><b>Windows only for the package</b><p>The beta build targets Windows 10/11 x64. Other source-code paths are not verified.</p></div>
-          <div class="limit-box"><b>Model privacy is endpoint-dependent</b><p>Project files stay local, but prompts are sent to the model endpoint you configure.</p></div>
+          <div class="limit-box"><b data-i18n="limit_solidworks_title">Not a SolidWorks replacement</b><p data-i18n="limit_solidworks_text">There is no complete 2D drawing workflow, general mate solver, or kinematic solver.</p></div>
+          <div class="limit-box"><b data-i18n="limit_production_title">Not production-ready</b><p data-i18n="limit_production_text"><code>production_ready</code> is always false. Review dimensions, materials, tolerances, and assumptions.</p></div>
+          <div class="limit-box"><b data-i18n="limit_windows_title">Windows only for the package</b><p data-i18n="limit_windows_text">The beta build targets Windows 10/11 x64. Other source-code paths are not verified.</p></div>
+          <div class="limit-box"><b data-i18n="limit_privacy_title">Model privacy is endpoint-dependent</b><p data-i18n="limit_privacy_text">Project files stay local, but prompts are sent to the model endpoint you configure.</p></div>
         </div>
       </div>
     </section>
@@ -182,9 +185,161 @@
 
   <footer>
     <div class="wrap footer-inner">
-      <span>Varen CAD · AGPL-3.0-or-later · Windows beta</span>
-      <span><a href="https://github.com/vanyu0710/Varen-AI-CAD/issues/new?template=task_failure.yml">Report a failed task</a></span>
+      <span data-i18n="footer_summary">Varen CAD · AGPL-3.0-or-later · Windows beta</span>
+      <span><a data-i18n="footer_report" href="https://github.com/vanyu0710/Varen-AI-CAD/issues/new?template=task_failure.yml">Report a failed task</a></span>
     </div>
   </footer>
+<script>
+  const translations = {
+    en: {
+      title: "Varen CAD — Local-first mechanical CAD agent",
+      description: "Varen CAD turns mechanical design tasks into parametric B-Rep assemblies and STEP files, and blocks delivery when geometry or interference validation fails.",
+      nav_github: "GitHub",
+      nav_download: "Download",
+      nav_limits: "Known limits",
+      hero_kicker: "Show HN · Windows beta",
+      hero_title: "A local-first CAD agent that has to prove its geometry.",
+      hero_lede: "Varen CAD plans a mechanical task, builds parametric B-Rep parts, checks the assembly, and exports STEP/STL. Failed geometry, feature, and interference checks are not reported as success.",
+      hero_download: "Download Windows beta",
+      hero_source: "View source",
+      hero_meta: "Windows x64 · AGPL-3.0-or-later · closed beta · <code>production_ready=false</code>",
+      hero_image_alt: "Varen CAD building an aircraft piston engine assembly in its workspace",
+      hero_caption: "Aircraft piston engine demo in the agent workspace, with execution history and geometry review.",
+      strip_brep_title: "Parametric B-Rep",
+      strip_brep_text: "OpenCascade-based geometry, not mesh-only output",
+      strip_export_title: "STEP / STL export",
+      strip_export_text: "Reviewable in downstream CAD tools",
+      strip_validation_title: "Validation gates",
+      strip_validation_text: "Single-solid, feature, and interference checks",
+      strip_local_title: "Local project files",
+      strip_local_text: "Model requests go to your configured endpoint",
+      how_eyebrow: "How it works",
+      how_title: "Plan, build, check, explain.",
+      how_intro: "The agent does not receive an unrestricted Python CAD shell. It works through constrained kernel operations and records each result.",
+      step_research_title: "Research",
+      step_research_text: "The agent asks structured questions and performs engineering calculations when the task is underspecified.",
+      step_plan_title: "Plan",
+      step_plan_text: "It proposes a BOM, quantities, and key parameters. Geometry changes only after the plan is approved.",
+      step_model_title: "Model",
+      step_model_text: "Parts are created one by one as parametric B-Rep geometry with a replayable feature history.",
+      step_check_title: "Check",
+      step_check_text: "Feature contracts, solid validity, and assembly interference are checked before export.",
+      why_eyebrow: "Why validation matters",
+      why_title: "“The model said it worked” is not an acceptance test.",
+      why_intro: "Varen treats success as a program state, not a confident summary from the LLM.",
+      card_feature_title: "Feature contracts",
+      card_feature_text: "Declared holes and dimensions are compared against measured B-Rep geometry. A mismatch can reject the part.",
+      card_solid_title: "Single-solid checks",
+      card_solid_text: "Floating or disconnected geometry is not silently archived as a finished part.",
+      card_interference_title: "Interference checks",
+      card_interference_text: "Pairs are checked for hard collisions before an assembly is accepted. Meshing zones require explicit exemption.",
+      test_eyebrow: "Five-minute test",
+      test_title: "Run this prompt after configuring a model endpoint.",
+      test_intro: "The packaged app supports OpenAI-compatible endpoints. If you prefer, use your own provider key.",
+      test_prompt: "Make a 120×120×12 mm flange with a Ø30 mm center through hole and six Ø8 mm bolt holes evenly distributed on a Ø90 mm circle. State assumptions and validation results. If any check fails, do not export it as success.",
+      limits_eyebrow: "Current limits",
+      limits_title: "What this beta is not.",
+      limits_intro: "Varen is for concept design and rapid prototyping. Human engineering review remains mandatory.",
+      limit_solidworks_title: "Not a SolidWorks replacement",
+      limit_solidworks_text: "There is no complete 2D drawing workflow, general mate solver, or kinematic solver.",
+      limit_production_title: "Not production-ready",
+      limit_production_text: "<code>production_ready</code> is always false. Review dimensions, materials, tolerances, and assumptions.",
+      limit_windows_title: "Windows only for the package",
+      limit_windows_text: "The beta build targets Windows 10/11 x64. Other source-code paths are not verified.",
+      limit_privacy_title: "Model privacy is endpoint-dependent",
+      limit_privacy_text: "Project files stay local, but prompts are sent to the model endpoint you configure.",
+      footer_summary: "Varen CAD · AGPL-3.0-or-later · Windows beta",
+      footer_report: "Report a failed task"
+    },
+    zh: {
+      title: "Varen CAD — 本地优先的机械 CAD Agent",
+      description: "Varen CAD 将机械设计任务转换为参数化 B-Rep 装配体和 STEP 文件，并在几何或干涉校验失败时阻止交付。",
+      nav_github: "GitHub",
+      nav_download: "下载",
+      nav_limits: "已知限制",
+      hero_kicker: "Show HN · Windows 测试版",
+      hero_title: "本地优先的 CAD Agent，几何结果必须自证。",
+      hero_lede: "Varen CAD 会规划机械任务、生成参数化 B-Rep 零件、校验装配体并导出 STEP/STL。几何、特征和干涉检查失败时，不会被报告为成功。",
+      hero_download: "下载 Windows 测试版",
+      hero_source: "查看源码",
+      hero_meta: "Windows x64 · AGPL-3.0-or-later · 封闭测试 · <code>production_ready=false</code>",
+      hero_image_alt: "Varen CAD 工作区内生成飞机活塞发动机装配体",
+      hero_caption: "飞机活塞发动机示例：Agent 工作区、执行历史与几何审查。",
+      strip_brep_title: "参数化 B-Rep",
+      strip_brep_text: "基于 OpenCascade 的几何体，不只是网格输出",
+      strip_export_title: "STEP / STL 导出",
+      strip_export_text: "可在下游 CAD 工具中复查",
+      strip_validation_title: "校验关卡",
+      strip_validation_text: "单实体、特征和干涉检查",
+      strip_local_title: "本地项目文件",
+      strip_local_text: "模型请求发送到你配置的接口",
+      how_eyebrow: "工作方式",
+      how_title: "规划、建模、检查、解释。",
+      how_intro: "Agent 没有获得不受限制的 Python CAD shell，而是通过受约束的内核操作执行，并记录每次结果。",
+      step_research_title: "调研",
+      step_research_text: "任务信息不足时，Agent 会提出结构化问题并进行工程计算。",
+      step_plan_title: "规划",
+      step_plan_text: "先提出 BOM、数量和关键参数。规划确认后才改变几何。",
+      step_model_title: "建模",
+      step_model_text: "逐件生成参数化 B-Rep 几何，并保留可回放的特征历史。",
+      step_check_title: "检查",
+      step_check_text: "导出前检查特征契约、实体有效性和装配干涉。",
+      why_eyebrow: "为什么校验重要",
+      why_title: "“模型说可以”不是验收测试。",
+      why_intro: "Varen 将成功视为程序状态，而不是 LLM 的自信总结。",
+      card_feature_title: "特征契约",
+      card_feature_text: "声明的孔位和尺寸会与实测 B-Rep 几何比对；不匹配可拒绝该零件。",
+      card_solid_title: "单实体检查",
+      card_solid_text: "悬空或断开的几何不会被静默归档为完成零件。",
+      card_interference_title: "干涉检查",
+      card_interference_text: "装配体接受前检查硬碰撞；啮合区域需要显式豁免。",
+      test_eyebrow: "五分钟测试",
+      test_title: "配置模型接口后，直接运行这个提示词。",
+      test_intro: "打包应用支持 OpenAI-compatible 接口。你也可以使用自己的供应商密钥。",
+      test_prompt: "制作一个 120×120×12 mm 法兰，中心 Ø30 mm 通孔，六个 Ø8 mm 螺栓孔均匀分布在 Ø90 mm 圆上。说明假设和校验结果。任何检查失败时，不要导出为成功。",
+      limits_eyebrow: "当前限制",
+      limits_title: "这个测试版不是什么。",
+      limits_intro: "Varen 面向概念设计和快速原型。人工工程审查仍然必需。",
+      limit_solidworks_title: "不是 SolidWorks 替代品",
+      limit_solidworks_text: "没有完整的 2D 制图、通用配合求解器或运动学求解器。",
+      limit_production_title: "未达到生产就绪",
+      limit_production_text: "<code>production_ready</code> 始终为 false。请复查尺寸、材料、公差和假设。",
+      limit_windows_title: "安装包仅支持 Windows",
+      limit_windows_text: "测试版面向 Windows 10/11 x64。其他源码路径未验证。",
+      limit_privacy_title: "模型隐私取决于接口",
+      limit_privacy_text: "项目文件保存在本地，但提示词会发送到你配置的模型接口。",
+      footer_summary: "Varen CAD · AGPL-3.0-or-later · Windows 测试版",
+      footer_report: "报告失败任务"
+    }
+  };
+
+  const languageToggle = document.getElementById("lang-toggle");
+
+  function setLanguage(language) {
+    const dictionary = translations[language] || translations.en;
+    document.documentElement.lang = language;
+    document.title = dictionary.title;
+    document.querySelector('meta[name="description"]').setAttribute("content", dictionary.description);
+    document.querySelectorAll("[data-i18n]").forEach(element => {
+      element.innerHTML = dictionary[element.dataset.i18n];
+    });
+    document.querySelectorAll("[data-i18n-alt]").forEach(element => {
+      element.setAttribute("alt", dictionary[element.dataset.i18nAlt]);
+    });
+    languageToggle.textContent = language === "en" ? "中文" : "EN";
+    languageToggle.setAttribute("aria-label", language === "en" ? "切换到中文" : "Switch to English");
+    localStorage.setItem("varen-language", language);
+    history.replaceState(null, "", `?lang=${language}`);
+  }
+
+  const requestedLanguage = new URLSearchParams(window.location.search).get("lang");
+  const storedLanguage = localStorage.getItem("varen-language");
+  const browserLanguage = navigator.language.toLowerCase().startsWith("zh") ? "zh" : "en";
+  setLanguage(translations[requestedLanguage] ? requestedLanguage : translations[storedLanguage] ? storedLanguage : browserLanguage);
+
+  languageToggle.addEventListener("click", () => {
+    setLanguage(document.documentElement.lang === "zh" ? "en" : "zh");
+  });
+</script>
 </body>
 </html>

@@ -1069,3 +1069,79 @@ class StageEvent(BaseModel):
     message: str
     payload: dict[str, Any] = Field(default_factory=dict)
     timestamp: str = Field(default_factory=now_iso)
+
+
+class KnowledgeDocumentRequest(BaseModel):
+    document_id: str = Field(min_length=1, max_length=128)
+    title: str = Field(min_length=1, max_length=240)
+    issuer: str = ""
+    document_type: str = "user_upload"
+    standard_number: str = ""
+    edition: str = ""
+    revision: str = ""
+    publication_date: str = ""
+    effective_date: str = ""
+    jurisdiction: str = ""
+    language: str = ""
+    source_url: str = ""
+    filename: str = ""
+    license_status: str = "unknown"
+    source_tier: Literal["normative", "manufacturer", "user", "derived"] = "user"
+    notes: str = ""
+
+
+class KnowledgeEvidenceRequest(BaseModel):
+    evidence_id: str = Field(min_length=1, max_length=128)
+    document_id: str = Field(min_length=1, max_length=128)
+    original_text: str = Field(min_length=1, max_length=100_000)
+    normalized_text: str = ""
+    page: str = ""
+    section: str = ""
+    table: str = ""
+    extracted_values: dict[str, Any] = Field(default_factory=dict)
+    units: dict[str, str] = Field(default_factory=dict)
+    applicability: str = ""
+    exclusions: str = ""
+    confidence: float | None = Field(default=None, ge=0.0, le=1.0)
+    extraction_method: str = "manual"
+    status: Literal["pending", "published", "rejected"] = "pending"
+    reviewer: str = ""
+
+
+class KnowledgeFactRequest(BaseModel):
+    fact_id: str = Field(min_length=1, max_length=128)
+    domain: str = Field(min_length=1, max_length=80)
+    component: str = Field(min_length=1, max_length=120)
+    parameter: str = Field(min_length=1, max_length=120)
+    value: Any
+    unit: str = ""
+    valid_range: str = ""
+    applicability: str = ""
+    evidence_ids: list[str] = Field(default_factory=list)
+    status: Literal["pending", "published", "rejected"] = "pending"
+    notes: str = ""
+
+
+class KnowledgeSearchRequest(BaseModel):
+    query: str = ""
+    domain: str = ""
+    component: str = ""
+    limit: int = Field(default=20, ge=1, le=100)
+    include_pending: bool = False
+
+
+class ResearchPlanRequest(BaseModel):
+    goal: str = Field(min_length=1, max_length=4_000)
+    domains: list[str] = Field(default_factory=list, max_length=10)
+    include_experiments: bool = False
+
+
+class ResearchPlanResponse(BaseModel):
+    plan_id: str
+    project_id: str
+    goal: str
+    status: str
+    tasks: list[dict[str, Any]]
+    evidence_policy: str
+    created_at: float
+    updated_at: float

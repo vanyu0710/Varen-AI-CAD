@@ -11,8 +11,9 @@ import {
 } from "../api";
 import { useT } from "../i18n";
 import ArtifactSaveLink from "../ArtifactSaveLink";
+import KnowledgeCenter from "../KnowledgeCenter";
 
-type Tab = "tree" | "property" | "review" | "process" | "export";
+type Tab = "tree" | "property" | "knowledge" | "review" | "process" | "export";
 
 export type ExportArtifactLink = {
   url: string;
@@ -28,6 +29,8 @@ export type ExportArtifacts = {
 
 type Props = {
   busy: boolean;
+  projectId: string;
+  onKnowledgeError: (message: string) => void;
   kernelTree: KernelFeatureTreeType;
   kernelSelectedFeature: KernelFeatureData | null;
   selectedFeatureId: string;
@@ -67,6 +70,8 @@ export default function StructurePanel(props: Props) {
   const [collapsed, setCollapsed] = useState(false);
   const {
     busy,
+    projectId,
+    onKnowledgeError,
     kernelTree,
     kernelSelectedFeature,
     selectedFeatureId,
@@ -95,6 +100,7 @@ export default function StructurePanel(props: Props) {
   const tabs: { id: Tab; labelKey: string }[] = [
     { id: "tree", labelKey: "manager.feature_tree" },
     { id: "property", labelKey: "manager.property" },
+    { id: "knowledge", labelKey: "knowledge.tab" },
     { id: "review", labelKey: "task.review" },
     { id: "process", labelKey: "task.process" },
     { id: "export", labelKey: "task.export" },
@@ -168,6 +174,9 @@ export default function StructurePanel(props: Props) {
             </div>
           )}
 
+          {tab === "knowledge" && (
+            <KnowledgeCenter projectId={projectId} onError={onKnowledgeError} />
+          )}
           {tab === "review" && (
             <div className="structure-review">
               {executionReport && (

@@ -20,7 +20,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from dotenv import load_dotenv
-from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, HTTPException, Request, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, Response
 from PIL import Image
@@ -80,6 +80,12 @@ from backend.schemas import (
     UpdateCheckResponse,
     UpdateInstallRequest,
     UpdateInstallResponse,
+    KnowledgeDocumentRequest,
+    KnowledgeEvidenceRequest,
+    KnowledgeFactRequest,
+    KnowledgeSearchRequest,
+    ResearchPlanRequest,
+    ResearchPlanResponse,
 )
 from backend.model_env_store import apply_model_env_profile, read_active_env, read_profiles, save_model_env
 from backend.mechcad_ai.client import (
@@ -103,6 +109,14 @@ from backend.storage import (
 from backend.validation import apply_validation_result, validate_feature_plan
 from backend.static_assets import mount_frontend
 from backend.version import APP_VERSION
+from backend.knowledge import (
+    EngineeringFact,
+    KnowledgeDocument,
+    KnowledgeEvidence,
+    KnowledgeStore,
+    domain_catalog,
+)
+from backend.subagents import build_research_plan
 
 
 load_dotenv()
@@ -171,6 +185,16 @@ _agent_lock = threading.Lock()
 _agent_sessions = SessionRegistry(
     os.getenv("MECHCAD_SESSION_DIR") or (Path(__file__).resolve().parent.parent / "work" / "agent_sessions")
 )
+
+# Evidence-first project knowledge. JSON is the source of truth; search indexes may
+# be added later as projections without changing the provenance contract.
+_knowledge_root = Path(os.getenv("MECHCAD_KNOWLEDGE_DIR") or (Path(__file__).resolve().parent.parent / "work" / "knowledge"))
+_knowledge_plans: dict[str, dict] = {}
+
+def _knowledge_store(project_id: str) -> KnowledgeStore:
+    _project_or_404(project_id)
+    return KnowledgeStore(_knowledge_root, project_id)
+
 
 
 def _get_session(project_id: str):
@@ -1244,6 +1268,98 @@ def delete_project(project_id: str):
     get_worker_manager().stop(project_id)
     store.delete_project(project_id)
     return {"ok": True}
+@app.get("/api/projects/{project_id}/knowledge/catalog")
+def knowledge_catalog(project_id: str):
+    _project_or_404(project_id)
+    return {"domains": domain_catalog(), "policy": "published evidence only; unresolved conflicts block CAD mutation"}
+
+
+@app.get("/api/projects/{project_id}/knowledge/documents")
+def knowledge_documents(project_id: str):
+    return {"documents": _knowledge_store(project_id).documents()}
+
+
+@app.post("/api/projects/{project_id}/knowledge/documents")
+def register_knowledge_document(project_id: str, request: KnowledgeDocumentRequest):
+    store_knowledge = _knowledge_store(project_id)
+    document = KnowledgeDocument(project_id=project_id, **request.model_dump())
+    return store_knowledge.register_document(document)
+
+
+@app.post("/api/projects/{project_id}/knowledge/documents/upload")
+async def upload_knowledge_document(project_id: str, request: Request, filename: str = ""):
+    """Store raw bytes without pretending that extraction is verified.
+
+    The caller must register metadata separately or provide a filename. The raw
+    file remains pending until evidence is extracted and reviewed.
+    """
+    store_knowledge = _knowledge_store(project_id)
+    content = await request.body()
+    name = filename or request.headers.get("x-filename") or "upload.bin"
+    document_id = uuid.uuid4().hex[:12]
+    document = KnowledgeDocument(
+        document_id=document_id,
+        project_id=project_id,
+        title=Path(name).stem or name,
+        filename=name,
+        source_tier="user",
+        license_status="user_declared",
+    )
+    try:
+        return store_knowledge.store_upload(document, content)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@app.post("/api/projects/{project_id}/knowledge/evidence")
+def add_knowledge_evidence(project_id: str, request: KnowledgeEvidenceRequest):
+    store_knowledge = _knowledge_store(project_id)
+    try:
+        return store_knowledge.add_evidence(KnowledgeEvidence(project_id=project_id, **request.model_dump()))
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@app.post("/api/projects/{project_id}/knowledge/evidence/{evidence_id}/publish")
+def publish_knowledge_evidence(project_id: str, evidence_id: str, reviewer: str = ""):
+    try:
+        return _knowledge_store(project_id).publish_evidence(evidence_id, reviewer=reviewer)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=f"evidence not found: {evidence_id}") from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@app.post("/api/projects/{project_id}/knowledge/facts")
+def add_knowledge_fact(project_id: str, request: KnowledgeFactRequest):
+    try:
+        return _knowledge_store(project_id).add_fact(EngineeringFact(project_id=project_id, **request.model_dump()))
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@app.post("/api/projects/{project_id}/knowledge/search")
+def search_knowledge(project_id: str, request: KnowledgeSearchRequest):
+    return {"results": _knowledge_store(project_id).search(**request.model_dump())}
+
+
+@app.post("/api/projects/{project_id}/research/plan", response_model=ResearchPlanResponse)
+def create_research_plan(project_id: str, request: ResearchPlanRequest):
+    _project_or_404(project_id)
+    try:
+        plan = build_research_plan(project_id, request.goal, request.domains, request.include_experiments)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    _knowledge_plans[project_id] = plan
+    return plan
+
+
+@app.get("/api/projects/{project_id}/research/plan", response_model=ResearchPlanResponse | None)
+def get_research_plan(project_id: str):
+    _project_or_404(project_id)
+    return _knowledge_plans.get(project_id)
+
+
 @app.patch("/api/projects/{project_id}/settings")
 def update_project_settings(project_id: str, request: ProjectSettingsRequest):
     """Merge a settings patch without wiping fields the caller did not submit.

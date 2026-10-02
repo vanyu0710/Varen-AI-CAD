@@ -932,3 +932,150 @@ export function assemblyArtifactUrl(projectId: string | undefined, filename: str
   }
   return `${API_ROOT}/api/projects/${projectId}/assembly/artifacts/${encodeURIComponent(filename)}`;
 }
+
+/* ===== Evidence-first knowledge and research planning ===== */
+
+export type KnowledgeSourceTier = "normative" | "manufacturer" | "user" | "derived";
+export type KnowledgePublishStatus = "pending" | "published" | "rejected";
+
+export type KnowledgeDomain = {
+  domain: string;
+  component: string;
+  scope: string;
+  status: string;
+};
+
+export type KnowledgeDocument = {
+  document_id: string;
+  project_id: string;
+  title: string;
+  issuer?: string;
+  document_type?: string;
+  standard_number?: string;
+  edition?: string;
+  revision?: string;
+  publication_date?: string;
+  effective_date?: string;
+  jurisdiction?: string;
+  language?: string;
+  source_url?: string;
+  filename?: string;
+  sha256?: string;
+  license_status?: string;
+  source_tier?: KnowledgeSourceTier;
+  status?: KnowledgePublishStatus;
+  created_at?: number;
+  notes?: string;
+  stored_name?: string;
+  size_bytes?: number;
+};
+
+export type KnowledgeEvidence = {
+  evidence_id: string;
+  project_id: string;
+  document_id: string;
+  original_text: string;
+  normalized_text?: string;
+  page?: string;
+  section?: string;
+  table?: string;
+  extracted_values?: Record<string, unknown>;
+  units?: Record<string, string>;
+  applicability?: string;
+  exclusions?: string;
+  confidence?: number | null;
+  extraction_method?: string;
+  status?: KnowledgePublishStatus;
+  created_at?: number;
+  reviewer?: string;
+  source?: KnowledgeDocument;
+};
+
+export type EngineeringFact = {
+  fact_id: string;
+  project_id: string;
+  domain: string;
+  component: string;
+  parameter: string;
+  value: unknown;
+  unit?: string;
+  valid_range?: string;
+  applicability?: string;
+  evidence_ids?: string[];
+  status?: KnowledgePublishStatus;
+  created_at?: number;
+  notes?: string;
+  sources?: KnowledgeDocument[];
+};
+
+export type KnowledgeSearchResult = ({ kind: "fact" } & EngineeringFact) | ({ kind: "evidence" } & KnowledgeEvidence);
+
+export type SubagentRole = "requirements" | "sealing" | "fasteners" | "profiles" | "manufacturing" | "geometry_validation" | "experiment";
+
+export type SubagentTask = {
+  task_id: string;
+  role: SubagentRole;
+  title: string;
+  objective: string;
+  status: "queued" | "running" | "waiting_user" | "completed" | "failed" | "cancelled";
+  depends_on?: string[];
+  evidence_query?: string;
+  context_refs?: string[];
+  findings?: Record<string, unknown>[];
+  error?: string;
+  created_at?: number;
+  updated_at?: number;
+};
+
+export type ResearchPlan = {
+  plan_id: string;
+  project_id: string;
+  goal: string;
+  status: string;
+  tasks: SubagentTask[];
+  evidence_policy: string;
+  created_at: number;
+  updated_at: number;
+};
+
+export async function fetchKnowledgeCatalog(projectId: string) {
+  const response = await fetch(`${API_ROOT}/api/projects/${encodeURIComponent(projectId)}/knowledge/catalog`);
+  return parseResponse<{ domains: KnowledgeDomain[]; policy: string }>(response);
+}
+
+export async function fetchKnowledgeDocuments(projectId: string) {
+  const response = await fetch(`${API_ROOT}/api/projects/${encodeURIComponent(projectId)}/knowledge/documents`);
+  return parseResponse<{ documents: KnowledgeDocument[] }>(response);
+}
+
+export async function uploadKnowledgeDocument(projectId: string, file: File) {
+  const response = await fetch(
+    `${API_ROOT}/api/projects/${encodeURIComponent(projectId)}/knowledge/documents/upload?filename=${encodeURIComponent(file.name)}`,
+    { method: "POST", body: file, headers: { "Content-Type": "application/octet-stream", "x-filename": encodeURIComponent(file.name) } },
+  );
+  return parseResponse<KnowledgeDocument>(response);
+}
+
+export async function searchKnowledge(projectId: string, request: { query?: string; domain?: string; component?: string; limit?: number; include_pending?: boolean }) {
+  const response = await fetch(`${API_ROOT}/api/projects/${encodeURIComponent(projectId)}/knowledge/search`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ limit: 20, ...request }),
+  });
+  return parseResponse<{ results: KnowledgeSearchResult[] }>(response);
+}
+
+export async function createResearchPlan(projectId: string, request: { goal: string; domains?: string[]; include_experiments?: boolean }) {
+  const response = await fetch(`${API_ROOT}/api/projects/${encodeURIComponent(projectId)}/research/plan`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(request),
+  });
+  return parseResponse<ResearchPlan>(response);
+}
+
+export async function fetchResearchPlan(projectId: string) {
+  const response = await fetch(`${API_ROOT}/api/projects/${encodeURIComponent(projectId)}/research/plan`);
+  if (response.status === 404) return null;
+  return parseResponse<ResearchPlan | null>(response);
+}

@@ -1188,6 +1188,8 @@ export default function App() {
 
           <StructurePanel
             busy={busy}
+            projectId={project?.project_id || ""}
+            onKnowledgeError={(message) => setError(message)}
             kernelTree={kernelTree}
             kernelSelectedFeature={kernelNodes[selectedFeatureId] ?? null}
             selectedFeatureId={selectedFeatureId}

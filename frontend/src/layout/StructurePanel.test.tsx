@@ -15,6 +15,8 @@ function renderPanel(exportArtifacts: Parameters<typeof StructurePanel>[0]["expo
   return render(
     <StructurePanel
       busy={false}
+      projectId="p1"
+      onKnowledgeError={vi.fn()}
       kernelTree={{
         graph: { nodes: {}, edges: {} },
         op_history: [],

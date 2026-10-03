@@ -1145,3 +1145,65 @@ class ResearchPlanResponse(BaseModel):
     evidence_policy: str
     created_at: float
     updated_at: float
+
+
+class EngineeringIssue(BaseModel):
+    """A fact-derived finding. `message` is a stable fallback, not a claim."""
+
+    code: str
+    message: str
+    parts: list[str] = Field(default_factory=list)
+
+
+class EngineeringMaterialItem(BaseModel):
+    """Viewport material grouping; this is not an engineering material specification."""
+
+    material: str
+    part_count: int = Field(ge=1)
+    parts: list[str] = Field(min_length=1)
+    basis: Literal["manifest", "name_hint", "mixed"]
+
+
+class EngineeringCriticalPart(BaseModel):
+    part: str
+    version: int | None = None
+    material: str
+    material_basis: Literal["manifest", "name_hint"]
+    role: str | None = None
+    depends_on: list[str] = Field(default_factory=list)
+    validation_status: str | None = None
+    volume_mm3: float | None = None
+    criticality_reasons: list[str] = Field(default_factory=list)
+    blocking_issues: list[EngineeringIssue] = Field(default_factory=list)
+    warning_issues: list[EngineeringIssue] = Field(default_factory=list)
+    is_critical: bool = False
+
+
+class EngineeringAssemblyReview(BaseModel):
+    available: bool
+    exported_at: str | None = None
+    step_file: str | None = None
+    render_file: str | None = None
+    report_file: str | None = None
+    parts_count: int = 0
+    active_parts_count: int = 0
+    total_pairs: int = 0
+    interfering_count: int = 0
+    exempted_count: int = 0
+    hard_collision_count: int = 0
+    expected_fit_count: int = 0
+    expected_mesh_count: int = 0
+    excluded_superseded: list[str] = Field(default_factory=list)
+    blocking_issues: list[EngineeringIssue] = Field(default_factory=list)
+    warning_issues: list[EngineeringIssue] = Field(default_factory=list)
+
+
+class EngineeringReviewResponse(BaseModel):
+    project_id: str
+    generated_at: str
+    status: Literal["NO_DATA", "BLOCKED", "WARNING", "PASS"]
+    active_parts_count: int = Field(ge=0)
+    materials: list[EngineeringMaterialItem] = Field(default_factory=list)
+    critical_parts: list[EngineeringCriticalPart] = Field(default_factory=list)
+    assembly: EngineeringAssemblyReview
+    limitations: list[str] = Field(min_length=1)

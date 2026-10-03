@@ -86,6 +86,7 @@ from backend.schemas import (
     KnowledgeSearchRequest,
     ResearchPlanRequest,
     ResearchPlanResponse,
+    EngineeringReviewResponse,
 )
 from backend.model_env_store import apply_model_env_profile, read_active_env, read_profiles, save_model_env
 from backend.mechcad_ai.client import (
@@ -117,6 +118,7 @@ from backend.knowledge import (
     domain_catalog,
 )
 from backend.subagents import build_research_plan
+from backend.engineering_review import build_engineering_review
 
 
 load_dotenv()
@@ -1268,6 +1270,16 @@ def delete_project(project_id: str):
     get_worker_manager().stop(project_id)
     store.delete_project(project_id)
     return {"ok": True}
+
+
+@app.get("/api/projects/{project_id}/engineering/review", response_model=EngineeringReviewResponse)
+def engineering_review(project_id: str):
+    """Fact-only material, critical-part, and assembly review from the manifest."""
+    _project_or_404(project_id)
+    manifest = read_manifest(project_id)
+    return EngineeringReviewResponse.model_validate(build_engineering_review(project_id, manifest))
+
+
 @app.get("/api/projects/{project_id}/knowledge/catalog")
 def knowledge_catalog(project_id: str):
     _project_or_404(project_id)

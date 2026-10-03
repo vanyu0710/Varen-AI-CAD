@@ -3130,3 +3130,254 @@
     grid-template-columns: 1fr;
   }
 }
+
+/* ===== Fact-first engineering material and assembly review ===== */
+.engineering-review {
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+}
+
+.engineering-header {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: start;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: rgba(10, 22, 42, 0.72);
+}
+
+.engineering-header strong,
+.engineering-header p {
+  margin: 0;
+}
+
+.engineering-header p {
+  color: var(--ink-soft);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.engineering-header-meta {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.engineering-status {
+  padding: 3px 8px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  color: var(--ink-soft);
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+.engineering-status.pass { color: var(--jade); border-color: rgba(56, 195, 232, 0.45); }
+.engineering-status.warning { color: #e0a05f; border-color: rgba(224, 160, 95, 0.45); }
+.engineering-status.blocked { color: #ef736b; border-color: rgba(239, 115, 107, 0.5); }
+
+.engineering-empty {
+  margin: 0;
+  color: var(--ink-muted);
+  font-size: 12px;
+}
+
+.engineering-materials,
+.engineering-parts,
+.engineering-assembly,
+.engineering-limitations {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: rgba(10, 22, 42, 0.7);
+}
+
+.engineering-section-head {
+  display: flex;
+  gap: 10px;
+  justify-content: space-between;
+  align-items: center;
+  color: var(--ink-soft);
+  font-size: 11px;
+}
+
+.engineering-section-head strong {
+  color: inherit;
+  font-size: 12px;
+}
+
+.engineering-material-note {
+  margin: 0;
+  color: #e0a05f;
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+.engineering-material-list {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.engineering-material {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+  padding: 9px 10px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: rgba(26, 48, 76, 0.42);
+}
+
+.engineering-material p {
+  margin: 2px 0 0;
+  color: var(--ink-soft);
+  font-size: 11px;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+
+.engineering-material span,
+.engineering-material em {
+  color: var(--ink-soft);
+  font-size: 10px;
+  font-style: normal;
+}
+
+.engineering-part-list {
+  display: grid;
+  gap: 8px;
+  max-height: 300px;
+  overflow: auto;
+  padding-right: 2px;
+}
+
+.engineering-part {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+  padding: 9px 10px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: rgba(26, 48, 76, 0.42);
+}
+
+.engineering-part.blocked { border-left: 3px solid #ef736b; }
+
+.engineering-part header {
+  display: flex;
+  gap: 8px;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.engineering-part header span {
+  color: #e0a05f;
+  font-size: 10px;
+}
+
+.engineering-part dl {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 7px;
+  margin: 0;
+}
+
+.engineering-part dl div {
+  min-width: 0;
+}
+
+.engineering-part dt,
+.engineering-metrics dt {
+  color: var(--ink-soft);
+  font-size: 10px;
+}
+
+.engineering-part dd,
+.engineering-metrics dd {
+  margin: 3px 0 0;
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+
+.engineering-issues {
+  display: grid;
+  gap: 3px;
+}
+
+.engineering-issues strong {
+  font-size: 10px;
+}
+
+.engineering-issues p {
+  margin: 0;
+  color: var(--ink-soft);
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+.engineering-blocking p { color: #ef736b; }
+.engineering-warnings p { color: #e0a05f; }
+
+.engineering-reasons {
+  margin: 0;
+  color: var(--ink-muted);
+  font-size: 10px;
+  line-height: 1.45;
+}
+
+.engineering-metrics {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 8px;
+  margin: 0;
+}
+
+.engineering-metrics > div {
+  border-left: 2px solid var(--line);
+  padding-left: 8px;
+  min-width: 0;
+}
+
+.engineering-metrics > div.warn { border-left-color: #e0a05f; }
+.engineering-metrics > div.warn dd { color: #e0a05f; }
+
+.engineering-excluded,
+.engineering-links {
+  margin: 0;
+  color: var(--ink-soft);
+  font-size: 11px;
+}
+
+.engineering-links {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.engineering-links a {
+  color: var(--jade);
+  font-size: 11px;
+}
+
+.engineering-limitations ul {
+  display: grid;
+  gap: 4px;
+  margin: 0;
+  padding-left: 18px;
+  color: var(--ink-soft);
+  font-size: 10px;
+  line-height: 1.45;
+}
+
+@media (max-width: 1100px) {
+  .engineering-material-list { grid-template-columns: 1fr; }
+  .engineering-part dl { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .engineering-metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}

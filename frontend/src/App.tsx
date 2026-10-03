@@ -1190,6 +1190,7 @@ export default function App() {
             busy={busy}
             projectId={project?.project_id || ""}
             onKnowledgeError={(message) => setError(message)}
+            onEngineeringError={(message) => setError(message)}
             kernelTree={kernelTree}
             kernelSelectedFeature={kernelNodes[selectedFeatureId] ?? null}
             selectedFeatureId={selectedFeatureId}

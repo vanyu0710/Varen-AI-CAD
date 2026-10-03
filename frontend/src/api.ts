@@ -1079,3 +1079,68 @@ export async function fetchResearchPlan(projectId: string) {
   if (response.status === 404) return null;
   return parseResponse<ResearchPlan | null>(response);
 }
+
+/* ===== Fact-first engineering material, part, and assembly review ===== */
+
+export type EngineeringIssue = {
+  code: string;
+  message: string;
+  parts?: string[];
+};
+
+export type EngineeringMaterialItem = {
+  material: string;
+  part_count: number;
+  parts: string[];
+  basis: "manifest" | "name_hint" | "mixed";
+};
+
+export type EngineeringCriticalPart = {
+  part: string;
+  version?: number | null;
+  material: string;
+  material_basis: "manifest" | "name_hint";
+  role?: string | null;
+  depends_on?: string[];
+  validation_status?: string | null;
+  volume_mm3?: number | null;
+  criticality_reasons?: string[];
+  blocking_issues: EngineeringIssue[];
+  warning_issues: EngineeringIssue[];
+  is_critical: boolean;
+};
+
+export type EngineeringAssemblyReview = {
+  available: boolean;
+  exported_at?: string | null;
+  step_file?: string | null;
+  render_file?: string | null;
+  report_file?: string | null;
+  parts_count: number;
+  active_parts_count: number;
+  total_pairs: number;
+  interfering_count: number;
+  exempted_count: number;
+  hard_collision_count: number;
+  expected_fit_count: number;
+  expected_mesh_count: number;
+  excluded_superseded?: string[];
+  blocking_issues: EngineeringIssue[];
+  warning_issues: EngineeringIssue[];
+};
+
+export type EngineeringReview = {
+  project_id: string;
+  generated_at: string;
+  status: "NO_DATA" | "BLOCKED" | "WARNING" | "PASS";
+  active_parts_count: number;
+  materials: EngineeringMaterialItem[];
+  critical_parts: EngineeringCriticalPart[];
+  assembly: EngineeringAssemblyReview;
+  limitations: string[];
+};
+
+export async function fetchEngineeringReview(projectId: string) {
+  const response = await fetch(`${API_ROOT}/api/projects/${encodeURIComponent(projectId)}/engineering/review`);
+  return parseResponse<EngineeringReview>(response);
+}

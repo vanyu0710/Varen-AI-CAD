@@ -10,7 +10,7 @@
 </p>
 
 <p align="center">
-  <b><a href="https://github.com/vanyu0710/Varen-AI-CAD/releases">下载 Windows 版</a></b> ·
+  <b><a href="https://github.com/vanyu0710/Varen-AI-CAD/releases/tag/v0.22.5-beta">下载 Windows v0.22.5-beta</a></b> ·
   <a href="README.en.md">English</a> ·
   <a href="https://vanyu0710.github.io/Varen-AI-CAD/">产品落地页</a> ·
   <a href="docs/beta.md">申请 Beta</a> ·
@@ -106,6 +106,25 @@ Agent 通过受约束的内核操作和结构化 `StepResult` 反馈工作，不
 
 本地存储不等于离线推理：发送到远程端点的提示词、附图和任务上下文受该服务商的数据政策约束。
 
+## v0.22.5-beta 更新重点
+
+- **安全加固**：自定义模型端点必须显式携带 API Key，真实调用不隐式外发本地密钥；拒绝非 HTTP(S) 与云元数据地址，WebSocket 校验 Origin，建模脚本与 artifact 路径增加防护。
+- **失败任务几何抢救**：Agent 失败但内核仍有正体积 B-Rep 时原子导出 STEP/STL；不覆盖既有可用产物，也不把 failed/partial 包装成 success。
+- **多零件查看**：支持装配/当前零件切换、零件搜索、可见/干涉筛选、单件 solo 与恢复全部。
+- **质量门禁**：详见 [更新日志](CHANGELOG.md)。
+
+## 工程知识、子代理与材料审查（源码预览）
+
+> 以下能力已进入当前源码工作区；v0.22.5-beta Windows 安装包尚未包含，实际可用性以后续 Release 为准。
+
+Varen CAD 不把“看起来专业”的材料名词当作工程事实：
+
+- **Evidence-first 知识库**：可登记或上传资料，保存原件与 SHA256；证据需人工审核发布，工程事实必须关联证据，冲突不会被静默择优。
+- **受限子代理**：可围绕密封、紧固件、铝型材、制造和几何验证生成调研计划、风险清单与待确认参数；子代理不直接修改 CAD 会话。
+- **Fact-first 材料与工程审查**：材料面板按 active 零件汇总视口渲染代理，并区分实测/程序检查结果、渲染代理与待人工工程确认项。
+- **重点零件与装配审查**：汇总版本、角色、依赖、实测体积、验证状态、STEP/STL 产物、硬碰撞、expected fit / expected mesh 与 superseded 排除项。
+- **明确边界**：`steel`、`cast_iron`、`aluminum` 等是视口材质键，不是材料规格；系统不会凭空输出 45 钢、6061-T6、屈服强度、硬度或密度等未审核数据。
+
 ## 3 分钟快速开始
 
 ### Windows 安装包
@@ -145,6 +164,9 @@ pip install -r requirements.txt build123d==0.11.1 cadquery-ocp-novtk==7.9.3.0
 - **编辑：** 特征树支持改参数、重放、删除、撤销和重做。
 - **装配：** `export_assembly` 按 BOM 放置零件，创建装配 STEP，并报告零件对之间的干涉。
 - **证据：** execution report 包含假设、已完成零件、失败门控、几何检查和待人工复核项目。
+- **工程审查：** 汇总材料代理、重点零件、STEP/STL 产物、硬碰撞与装配豁免，不把渲染材质当作采购规格。
+- **工程知识：** 上传资料保留原件与 SHA256，证据人工审核发布后才可搜索和进入建模链路。
+- **子代理：** 生成受限研究计划、风险与待确认参数，不能直接修改 CAD 会话。
 
 ## 技术边界
 
@@ -179,6 +201,7 @@ Varen CAD 明确不声称提供：
 - [封闭 Beta 规则](docs/beta.md)
 - [开发与测试](DEVELOPMENT.md)
 - [许可策略](docs/license-strategy.md)
+- [Demo 说明](docs/demo/demo说明.md)
 - [更新日志](CHANGELOG.md)
 
 ## License

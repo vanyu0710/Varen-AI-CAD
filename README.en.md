@@ -10,7 +10,7 @@
 </p>
 
 <p align="center">
-  <b><a href="https://github.com/vanyu0710/Varen-AI-CAD/releases">Download for Windows</a></b> ·
+  <b><a href="https://github.com/vanyu0710/Varen-AI-CAD/releases/tag/v0.22.5-beta">Download Windows v0.22.5-beta</a></b> ·
   <a href="README.md">简体中文</a> ·
   <a href="https://vanyu0710.github.io/Varen-AI-CAD/">Product page</a> ·
   <a href="docs/beta.md">Apply for the beta</a> ·
@@ -106,6 +106,25 @@ Failures produce structured reports and can trigger rollback or another modeling
 
 Local storage does not mean offline inference: prompts, attached sketches, and task context sent to a remote endpoint are subject to that provider's data policy.
 
+## v0.22.5-beta highlights
+
+- **Security hardening:** custom model endpoints require an explicit API key, real calls never implicitly send local keys, non-HTTP(S) and cloud-metadata addresses are rejected, WebSocket Origin is validated, and modeling scripts and artifact paths receive additional guards.
+- **Failed-task geometry rescue:** when the agent fails but the kernel still has positive-volume B-Rep geometry, STEP/STL are exported atomically; existing usable artifacts are not overwritten and failed/partial results are not presented as success.
+- **Multi-part viewing:** switch between assembly and current part, search parts, filter by visibility/interference, solo one part, and restore all.
+- **Quality gates:** see the [changelog](CHANGELOG.md) for details.
+
+## Engineering knowledge, subagents, and material review (source preview)
+
+> These capabilities are present in the current source tree; they are not included in the v0.22.5-beta Windows package. Follow subsequent releases for installer availability.
+
+Varen CAD does not treat professional-sounding material names as engineering facts:
+
+- **Evidence-first knowledge center:** register or upload source documents; originals and SHA256 hashes are retained, evidence requires human review before publication, engineering facts must reference evidence, and conflicts are never resolved by silently picking one value.
+- **Bounded subagents:** create research plans, risks, and parameters requiring confirmation for sealing, fasteners, aluminum profiles, manufacturing, and geometry validation. A subagent cannot mutate the primary CAD session.
+- **Fact-first material and engineering review:** the material panel groups viewport rendering proxies for active parts and distinguishes measured/programmatic results from rendering proxies and items awaiting human engineering review.
+- **Critical-part and assembly review:** summarizes revisions, roles, dependencies, measured volume, validation status, STEP/STL artifacts, hard collisions, expected fit / expected mesh exemptions, and superseded exclusions.
+- **Boundary:** `steel`, `cast_iron`, and `aluminum` are viewport material keys, not purchasing specifications. The system does not invent unreviewed values such as 45 steel, 6061-T6, yield strength, hardness, or density.
+
 ## Three-minute quick start
 
 ### Windows package
@@ -145,6 +164,9 @@ The default kernel location is a sibling `mechcad-kernel` checkout. Override it 
 - **Editing:** the feature tree supports parameter changes, replay, delete, undo, and redo.
 - **Assembly:** `export_assembly` places BOM parts, creates an assembly STEP, and reports pairwise interference.
 - **Evidence:** execution reports include assumptions, completed parts, failed gates, geometry checks, and items requiring review.
+- **Engineering review:** summarizes material proxies, critical parts, STEP/STL artifacts, hard collisions, and assembly exemptions without treating a render material as a purchasing specification.
+- **Engineering knowledge:** uploaded documents retain originals and SHA256 hashes; evidence becomes searchable and available to the modeling chain only after human review and publication.
+- **Subagents:** generate bounded research plans, risks, and parameters requiring confirmation without directly mutating the CAD session.
 
 ## Technical boundaries
 
@@ -179,6 +201,7 @@ Failure reports are useful even when the agent stops at a gate. They become repr
 - [Closed beta rules](docs/beta.md)
 - [Development and testing](DEVELOPMENT.md)
 - [License strategy](docs/license-strategy.md)
+- [Demo guide](docs/demo/demo说明.md)
 - [Changelog](CHANGELOG.md)
 
 ## License

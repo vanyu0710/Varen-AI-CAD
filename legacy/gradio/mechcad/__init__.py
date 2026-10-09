@@ -1,2 +1,0 @@
-"""MechCAD MVP package."""
-

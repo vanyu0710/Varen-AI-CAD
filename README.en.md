@@ -26,6 +26,8 @@
 
 > **Status:** Windows only, closed beta. Varen CAD is for concept design and rapid prototyping. It is not a SolidWorks replacement, it does not provide a complete 2D drawing workflow or a general assembly mate solver, and `production_ready` is always `false`. Every output requires human engineering review.
 
+> **Repository status (2026-10):** This repository is now a **distribution and landing portal** — product documentation, landing page and releases only. It no longer contains source code and does not accept source contributions. The previously open-sourced code has been detached from the upstream history. Existing forks are third-party copies lawfully obtained under the then-applicable AGPL-3.0; they are **not maintained by us** and do not represent the current product. Active development continues in a private repository.
+
 ## See the result first
 
 The repository contains real end-to-end outputs from the agent workflow:

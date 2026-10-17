@@ -1,5 +1,9 @@
 # Security Policy
 
+## Repository scope
+
+Since 2026-10 this repository is a distribution and landing portal: documentation, landing page and releases only, no source code. The previously open-sourced history has been detached from the upstream, and active development continues in a private repository. Forks that still carry the old code are third-party copies obtained under the then-applicable AGPL-3.0; they are not maintained by us and we cannot vouch for any changes made in them.
+
 ## Supported versions
 
 Security fixes target the latest public beta listed on the [Releases](https://github.com/vanyu0710/aicad/releases) page. Older builds may contain known dependency or packaging issues.

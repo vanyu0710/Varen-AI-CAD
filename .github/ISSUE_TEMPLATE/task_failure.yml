@@ -1,0 +1,60 @@
+name: 🧩 任务失败报告（最有价值的反馈）
+description: AI agent 把你的建模任务做错、做一半、或被门控拦下——提交失败样本，进入公开 benchmark
+labels: ["task-failure", "benchmark"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Varen 的原则是**失败透明**：每一个失败样本都会被复现、归因，并进入回归 benchmark。
+  - type: textarea
+    id: prompt
+    attributes:
+      label: 你输入的任务（原文粘贴，可脱敏尺寸数值）
+      placeholder: 例：给我设计一个单级圆柱齿轮减速器，i=5，输入 2kW/1400rpm…
+    validations:
+      required: true
+  - type: textarea
+    id: expectation
+    attributes:
+      label: 你期望的结果 vs 实际结果
+      placeholder: 期望…；实际在第 N 步…（零件数/干涉/契约报错…）
+    validations:
+      required: true
+  - type: dropdown
+    id: stage
+    attributes:
+      label: 失败发生在哪个环节
+      options:
+        - 调研/提问阶段（结果明显不合理）
+        - BOM 计划（零件清单/参数不对）
+        - 单件建模（报错、反复重试、几何错误）
+        - 归档门控（被误拦或该拦未拦）
+        - 装配/干涉（位姿错、豁免异常）
+        - 导出（STEP/STL 在其他软件打不开或几何异常）
+        - 卡住不推进 / 步数耗尽
+        - 其他
+    validations:
+      required: true
+  - type: textarea
+    id: env
+    attributes:
+      label: 模型与版本
+      description: 用的哪个 planner 模型（截图会话流任意一步的工具卡片也可以）+ /api/health 的 version
+    validations:
+      required: true
+  - type: textarea
+    id: diagnostics
+    attributes:
+      label: 诊断包 / 会话导出
+      description: 设置中心 → 支持 → 导出诊断包；如含项目会话，请在提交前人工检查脱敏
+    validations:
+      required: false
+  - type: checkboxes
+    id: consent
+    attributes:
+      label: 授权
+      options:
+        - label: 允许将该任务（脱敏后）收录进公开 benchmark 与失败周报
+          required: true
+        - label: 我已检查附件不含公司图纸或敏感数据
+          required: true

@@ -1,0 +1,254 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#f5f4ef">
+  <title>Varen CAD — AI 机械 CAD 建模</title>
+  <meta name="description" content="从机械需求到真实 CAD 几何。Varen CAD AI Agent 会规划 BOM、逐件创建参数化 B-Rep 零件、检查装配并导出 STEP。">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=DM+Sans:wght@400;500;600;700&family=Noto+Sans+SC:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --paper: #f5f4ef;
+      --white: #fffefa;
+      --ink: #142636;
+      --muted: #5d6c76;
+      --faint: #829099;
+      --line: #1426361a;
+      --line-strong: #14263635;
+      --blue: #245879;
+      --cyan: #20a9bd;
+      --cyan-pale: #e1f2f3;
+      --max: 1160px;
+      --serif: Georgia, "Noto Serif SC", serif;
+    }
+    * { box-sizing: border-box; }
+    html { scroll-behavior: smooth; }
+    body { margin: 0; background: var(--paper); color: var(--ink); font-family: "DM Sans", "Noto Sans SC", sans-serif; line-height: 1.65; -webkit-font-smoothing: antialiased; }
+    a { color: inherit; text-decoration: none; }
+    img { display: block; max-width: 100%; }
+    .wrap { width: min(var(--max), calc(100% - 56px)); margin-inline: auto; }
+    .mono { font-family: "DM Mono", monospace; }
+    .eyebrow { color: var(--blue); font: 500 11px "DM Mono", monospace; letter-spacing: .14em; text-transform: uppercase; }
+
+    .nav { height: 72px; position: sticky; top: 0; z-index: 10; background: #f5f4eff2; border-bottom: 1px solid var(--line); backdrop-filter: blur(12px); }
+    .nav-inner { height: 100%; display: flex; align-items: center; justify-content: space-between; }
+    .brand { display: flex; align-items: center; gap: 10px; font-size: 17px; font-weight: 700; letter-spacing: -.04em; }
+    .brand-mark { width: 27px; height: 27px; border: 1.5px solid var(--ink); border-radius: 50%; display: grid; place-items: center; font: 600 12px Georgia, serif; }
+    .nav-links { display: flex; align-items: center; gap: 27px; color: var(--muted); font-size: 12px; }
+    .nav-links a:hover, .text-link:hover { color: var(--cyan); }
+    .nav-cta { padding: 9px 15px; border: 1px solid var(--ink); color: var(--ink)!important; transition: background .2s, color .2s; }
+    .nav-cta:hover { background: var(--ink); color: var(--white)!important; }
+
+    .hero { padding: 76px 0 53px; }
+    .hero-top { display: grid; grid-template-columns: 1fr auto; align-items: end; gap: 35px; margin-bottom: 34px; }
+    .hero h1 { max-width: 790px; margin: 15px 0 0; font-size: clamp(42px, 6vw, 76px); line-height: 1.13; letter-spacing: -.065em; font-weight: 600; }
+    .hero h1 span { color: var(--blue); font-family: var(--serif); font-weight: 400; font-style: italic; }
+    .hero-copy { max-width: 365px; padding-bottom: 5px; }
+    .hero-copy p { margin: 0; font-size: 14px; color: var(--muted); line-height: 1.9; }
+    .hero-copy strong { color: var(--ink); font-weight: 600; }
+    .hero-actions { display: flex; align-items: center; gap: 18px; margin-top: 20px; }
+    .button { display: inline-flex; justify-content: center; align-items: center; gap: 9px; min-height: 42px; padding: 0 16px; border: 1px solid var(--ink); font-size: 12px; font-weight: 600; transition: background .2s, color .2s; }
+    .button-primary { background: var(--ink); color: var(--white); }
+    .button-primary:hover { background: var(--blue); }
+    .text-link { color: var(--blue); font-size: 12px; font-weight: 600; }
+    .workspace { margin: 0; }
+    .workspace-frame { border: 1px solid #122a3a33; background: #0b1a2d; padding: 7px; box-shadow: 0 20px 55px #14263616; }
+    .workspace-frame img { width: 100%; height: auto; }
+    .workspace figcaption { display: flex; justify-content: space-between; gap: 14px; padding: 11px 2px 0; color: var(--faint); font-size: 11px; }
+    .workspace figcaption strong { color: var(--muted); font-weight: 500; }
+
+    .proof { border-top: 1px solid var(--line-strong); border-bottom: 1px solid var(--line-strong); padding: 19px 0; }
+    .proof-grid { display: grid; grid-template-columns: repeat(4, 1fr); }
+    .proof-item { padding: 0 20px; border-right: 1px solid var(--line); }
+    .proof-item:first-child { padding-left: 0; }
+    .proof-item:last-child { border: 0; }
+    .proof-item b { display: block; font-size: 13px; font-weight: 600; }
+    .proof-item span { color: var(--muted); font-size: 11px; }
+
+    section { padding: 83px 0; }
+    .section-head { max-width: 650px; margin-bottom: 34px; }
+    .section-head h2 { margin: 11px 0 12px; font-size: clamp(30px, 4vw, 47px); line-height: 1.2; letter-spacing: -.055em; font-weight: 600; }
+    .section-head p { margin: 0; color: var(--muted); font-size: 14px; line-height: 1.8; }
+    .workflow { border-top: 1px solid var(--line); }
+    .steps { display: grid; grid-template-columns: repeat(4, 1fr); border-top: 1px solid var(--line-strong); }
+    .step { padding: 20px 22px 0 0; margin-right: 22px; border-right: 1px solid var(--line); }
+    .step:last-child { border: 0; margin: 0; }
+    .step-num { color: var(--cyan); font: 500 11px "DM Mono", monospace; }
+    .step h3 { margin: 20px 0 7px; font-size: 17px; letter-spacing: -.03em; }
+    .step p { margin: 0; color: var(--muted); font-size: 12px; line-height: 1.8; }
+
+    .results { background: var(--white); border-block: 1px solid var(--line); }
+    .results-head { display: flex; align-items: end; justify-content: space-between; gap: 25px; }
+    .results-head .section-head { margin-bottom: 28px; }
+    .results-head .note { margin-bottom: 34px; color: var(--faint); font-size: 11px; }
+    .case-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 22px; }
+    .case { margin: 0; }
+    .case-image { overflow: hidden; border: 1px solid var(--line); background: #eef0eb; }
+    .case-image img { width: 100%; aspect-ratio: 1.48; object-fit: cover; transition: transform .5s ease; }
+    .case:hover .case-image img { transform: scale(1.015); }
+    .case-caption { display: flex; justify-content: space-between; gap: 15px; padding-top: 12px; }
+    .case-caption strong { font-size: 13px; font-weight: 600; }
+    .case-caption span { color: var(--muted); font: 10px "DM Mono", monospace; text-align: right; }
+
+    .principles { display: grid; grid-template-columns: .85fr 1.15fr; gap: 65px; align-items: start; }
+    .principles .section-head { position: sticky; top: 108px; }
+    .principle-list { border-top: 1px solid var(--line-strong); }
+    .principle { display: grid; grid-template-columns: 35px 1fr; gap: 13px; padding: 18px 0; border-bottom: 1px solid var(--line); }
+    .principle .n { color: var(--cyan); font: 11px "DM Mono", monospace; padding-top: 3px; }
+    .principle h3 { margin: 0 0 5px; font-size: 14px; font-weight: 600; }
+    .principle p { margin: 0; max-width: 600px; color: var(--muted); font-size: 12px; line-height: 1.8; }
+
+    .limits { background: #e9ece8; }
+    .limits-grid { display: grid; grid-template-columns: repeat(3, 1fr); border-top: 1px solid #14263635; }
+    .limit { padding: 17px 20px 0 0; margin-right: 20px; border-right: 1px solid #14263620; }
+    .limit:last-child { border: 0; margin: 0; }
+    .limit b { display: block; font-size: 13px; margin-bottom: 5px; }
+    .limit p { margin: 0; color: var(--muted); font-size: 11px; line-height: 1.8; }
+
+    .closing { padding: 65px 0 77px; }
+    .closing-inner { display: flex; align-items: center; justify-content: space-between; gap: 30px; border-block: 1px solid var(--line-strong); padding: 27px 0; }
+    .closing h2 { margin: 0; font-size: clamp(24px, 3.4vw, 38px); letter-spacing: -.05em; }
+    .closing p { margin: 6px 0 0; color: var(--muted); font-size: 12px; }
+    footer { border-top: 1px solid var(--line); padding: 23px 0 31px; color: var(--faint); font-size: 11px; }
+    .footer-inner { display: flex; align-items: center; justify-content: space-between; gap: 18px; flex-wrap: wrap; }
+    .footer-links { display: flex; gap: 18px; flex-wrap: wrap; }
+    .footer-links a:hover { color: var(--cyan); }
+
+    @media(max-width: 850px) {
+      .hero-top { grid-template-columns: 1fr; gap: 16px; }
+      .hero-copy { max-width: 630px; }
+      .principles { grid-template-columns: 1fr; gap: 15px; }
+      .principles .section-head { position: static; }
+    }
+    @media(max-width: 620px) {
+      .wrap { width: calc(100% - 34px); }
+      .nav { height: 62px; }
+      .nav-links { gap: 0; }
+      .nav-links a:not(.nav-cta) { display: none; }
+      .nav-cta { padding: 8px 10px; font-size: 10px; }
+      .hero { padding: 48px 0 35px; }
+      .hero h1 { font-size: clamp(39px, 11.5vw, 58px); }
+      .hero-copy p { font-size: 13px; }
+      .hero-actions { gap: 14px; }
+      .workspace-frame { padding: 4px; }
+      .workspace figcaption { font-size: 9px; }
+      .proof { padding: 14px 0; }
+      .proof-grid { grid-template-columns: 1fr 1fr; row-gap: 14px; }
+      .proof-item { padding: 0 10px; }
+      .proof-item:nth-child(2) { border: 0; }
+      .proof-item:nth-child(3) { padding-left: 0; }
+      section { padding: 60px 0; }
+      .steps { grid-template-columns: 1fr 1fr; row-gap: 22px; }
+      .step:nth-child(2) { border: 0; }
+      .step { margin-right: 13px; padding-right: 12px; }
+      .step h3 { margin-top: 12px; }
+      .case-grid { grid-template-columns: 1fr; gap: 25px; }
+      .results-head { display: block; }
+      .results-head .note { margin: -15px 0 24px; }
+      .limits-grid { grid-template-columns: 1fr; }
+      .limit { padding: 14px 0; margin: 0; border-right: 0; border-bottom: 1px solid #14263620; }
+      .limit:last-child { border: 0; }
+      .closing-inner { align-items: flex-start; flex-direction: column; }
+      .closing .button { width: 100%; }
+      .footer-inner { align-items: flex-start; flex-direction: column; }
+    }
+    @media(prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } *,*::before,*::after { transition-duration: .01ms!important; } }
+  </style>
+</head>
+<body>
+  <nav class="nav">
+    <div class="wrap nav-inner">
+      <a class="brand" href="#top" aria-label="Varen CAD 首页"><span class="brand-mark">V</span>Varen CAD</a>
+      <div class="nav-links">
+        <a href="#workflow">工作方式</a>
+        <a href="#results">真实结果</a>
+        <a href="#limits">适用边界</a>
+        <a class="nav-cta" href="https://github.com/vanyu0710/Varen-AI-CAD/releases/tag/v0.22.5-beta">下载 Windows Beta ↗</a>
+      </div>
+    </div>
+  </nav>
+
+  <main id="top">
+    <header class="hero">
+      <div class="wrap">
+        <div class="hero-top">
+          <div>
+            <span class="eyebrow">AI CAD MODELING · WINDOWS BETA</span>
+            <h1>把机械需求，<br><span>变成真实 CAD 几何。</span></h1>
+          </div>
+          <div class="hero-copy">
+            <p><strong>Varen CAD 是为机械设计打造的 AI 建模工具。</strong>它先计算、提问、列出 BOM 等你确认，再逐件创建可编辑的参数化零件，检查装配并导出 STEP。检查不过，不会把结果说成成功交付。</p>
+            <div class="hero-actions">
+              <a class="button button-primary" href="https://github.com/vanyu0710/Varen-AI-CAD/releases/tag/v0.22.5-beta">获取 Windows Beta ↗</a>
+              <a class="text-link" href="#results">看真实结果 ↓</a>
+            </div>
+          </div>
+        </div>
+        <figure class="workspace">
+          <div class="workspace-frame"><img src="images/varen-ai-cad-workspace.png" alt="Varen CAD AI 建模工作台：机械零件的三维 CAD 视口、Agent 助手和特征树" fetchpriority="high"></div>
+          <figcaption><strong>真实产品界面 · CAD 视口、Agent 对话与参数化特征树</strong><span class="mono">VAREN CAD / WORKSPACE</span></figcaption>
+        </figure>
+      </div>
+    </header>
+
+    <div class="proof"><div class="wrap proof-grid">
+      <div class="proof-item"><b>AI CAD 建模</b><span>不是文生图或网格生成</span></div>
+      <div class="proof-item"><b>参数化 B-Rep</b><span>真实、可编辑的 CAD 几何</span></div>
+      <div class="proof-item"><b>装配 STEP</b><span>便于交给其他 CAD 软件检查</span></div>
+      <div class="proof-item"><b>失败会拦截</b><span>几何与干涉检查不过不交付</span></div>
+    </div></div>
+
+    <section class="workflow" id="workflow">
+      <div class="wrap">
+        <div class="section-head"><span class="eyebrow">HOW IT WORKS</span><h2>AI 负责建模，<br>你掌握设计决定。</h2><p>从需求到装配按步骤推进。计划先审核，几何后生成，结果再检查。</p></div>
+        <div class="steps">
+          <article class="step"><span class="step-num">01 / UNDERSTAND</span><h3>理解与计算</h3><p>整理设计意图，估算关键尺寸。需求不清楚时先向你提问。</p></article>
+          <article class="step"><span class="step-num">02 / PLAN</span><h3>计划由你批准</h3><p>列出 BOM、零件参数与建模步骤；你确认后才开始建模。</p></article>
+          <article class="step"><span class="step-num">03 / MODEL</span><h3>生成真实几何</h3><p>用 CAD 内核逐件创建参数化 B-Rep 零件，保留特征历史。</p></article>
+          <article class="step"><span class="step-num">04 / CHECK</span><h3>检查后再交付</h3><p>验证零件与装配干涉。失败会阻止导出为成功结果，并保留记录。</p></article>
+        </div>
+      </div>
+    </section>
+
+    <section class="results" id="results">
+      <div class="wrap">
+        <div class="results-head"><div class="section-head"><span class="eyebrow">REAL CAD OUTPUTS</span><h2>不是效果图，<br>是实际建出来的装配。</h2><p>以下是 AI CAD 工作流的真实任务结果。案例展示能力，不代表每个任务都能一次成功。</p></div><span class="note">真实运行记录 · 概念设计 / 原型</span></div>
+        <div class="case-grid">
+          <figure class="case"><div class="case-image"><img src="images/varen-gearbox-assembly.png" alt="三级齿轮减速器 CAD 装配四视图" loading="lazy"></div><figcaption class="case-caption"><strong>1:100 三级齿轮减速器</strong><span>8 PARTS · 53 STEPS · 0 HARD COLLISIONS</span></figcaption></figure>
+          <figure class="case"><div class="case-image"><img src="images/varen-transmission-visual.png" alt="五挡手动变速器 CAD 装配与零件视图" loading="lazy"></div><figcaption class="case-caption"><strong>五挡手动变速器总成</strong><span>26 PARTS · 325 PAIRS CHECKED · 0 HARD COLLISIONS</span></figcaption></figure>
+        </div>
+      </div>
+    </section>
+
+    <section>
+      <div class="wrap principles">
+        <div class="section-head"><span class="eyebrow">BUILT FOR ENGINEERING REVIEW</span><h2>看得见过程，<br>也看得见边界。</h2><p>AI 生成不等于工程正确。Varen CAD 把计算、计划、建模和检查结果留给人复核。</p></div>
+        <div class="principle-list">
+          <article class="principle"><span class="n">01</span><div><h3>真实 CAD 几何，不是图片或网格</h3><p>以 OpenCascade 内核创建 B-Rep 几何，导出参数化零件和装配 STEP。</p></div></article>
+          <article class="principle"><span class="n">02</span><div><h3>关键计划先经你确认</h3><p>AI 提出零件清单与参数计划，批准后才执行建模。</p></div></article>
+          <article class="principle"><span class="n">03</span><div><h3>失败不是成功交付</h3><p>几何、特征契约或碰撞检查失败时，系统会拦截交付并记录原因。</p></div></article>
+          <article class="principle"><span class="n">04</span><div><h3>本地保存，远端模型需留意</h3><p>项目文件保存在本机；若连接远程模型服务，发送的提示词和上下文仍受服务商政策约束。</p></div></article>
+        </div>
+      </div>
+    </section>
+
+    <section class="limits" id="limits">
+      <div class="wrap">
+        <div class="section-head"><span class="eyebrow">CURRENT SCOPE</span><h2>用于概念设计与快速原型，<br>不替代工程放行。</h2><p>当前为 Windows 封闭 Beta。请在使用前了解这些边界。</p></div>
+        <div class="limits-grid">
+          <div class="limit"><b>必须人工工程审核</b><p><code>production_ready</code> 始终为 false。制造前由工程师复核尺寸、材料和设计。</p></div>
+          <div class="limit"><b>不是 SolidWorks 替代品</b><p>不提供完整 2D 工程图流程或通用装配配合、运动求解器。</p></div>
+          <div class="limit"><b>当前仅支持 Windows</b><p>Beta 安装包面向 Windows x64；远程模型端点需要用户自行配置。</p></div>
+        </div>
+      </div>
+    </section>
+
+    <section class="closing"><div class="wrap closing-inner"><div><span class="eyebrow">V0.22.5-BETA · WINDOWS X64</span><h2>把一个真实机械任务交给 AI 试试。</h2><p>封闭 Beta · 概念设计与快速原型 · 输出需人工工程复核</p></div><a class="button button-primary" href="https://github.com/vanyu0710/Varen-AI-CAD/releases/tag/v0.22.5-beta">查看安装包与 SHA256 ↗</a></div></section>
+  </main>
+
+  <footer><div class="wrap footer-inner"><span>© 2026 Varen CAD · AI CAD 建模 · Windows 封闭 Beta</span><div class="footer-links"><a href="https://github.com/vanyu0710/Varen-AI-CAD">GitHub</a><a href="https://github.com/vanyu0710/Varen-AI-CAD/blob/main/README.md">使用说明</a><a href="https://github.com/vanyu0710/Varen-AI-CAD/blob/main/KNOWN_ISSUES.md">已知限制</a><a href="https://github.com/vanyu0710/Varen-AI-CAD/issues/new?template=beta_application.yml">申请设计伙伴</a></div></div></footer>
+</body>
+</html>

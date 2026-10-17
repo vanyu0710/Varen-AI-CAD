@@ -1,0 +1,57 @@
+name: 🐞 Bug 报告
+description: 软件崩溃、UI 异常、导出损坏等与"任务做错了"不同的问题
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        机械任务"做错了/做不出来"请用 **任务失败报告** 模板，那类反馈会进公开 benchmark，价值最高。
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: 发生了什么
+      placeholder: 期望看到 X，实际看到 Y
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: 复现步骤
+      placeholder: |
+        1. 新建项目…
+        2. 输入…
+        3. 点击…
+    validations:
+      required: true
+  - type: dropdown
+    id: mode
+    attributes:
+      label: 运行方式
+      options:
+        - Windows 打包版（VarenCAD.exe）
+        - start-mechcad-pro.cmd（源码产品模式）
+        - 开发模式（Vite + FastAPI）
+        - 其他
+    validations:
+      required: true
+  - type: textarea
+    id: version
+    attributes:
+      label: 版本信息
+      description: 设置中心 → 关于，或访问 /api/health 把 JSON 贴过来
+    validations:
+      required: true
+  - type: textarea
+    id: diagnostics
+    attributes:
+      label: 诊断包
+      description: 设置中心 → 支持 → 导出诊断包，把 .zip 拖到这里（不含 API key，可放心上传）
+    validations:
+      required: false
+  - type: checkboxes
+    id: privacy
+    attributes:
+      label: 隐私确认
+      options:
+        - label: 我已检查上传内容（截图/日志/附件）不含公司图纸或敏感数据
+          required: true

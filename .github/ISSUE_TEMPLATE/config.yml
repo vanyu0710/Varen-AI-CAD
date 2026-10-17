@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: 💬 问答 / 展示你做过的模型（Discussions）
+    url: https://github.com/vanyu0710/aicad/discussions
+    about: 使用问题、想法交流、成果展示都去 Discussions，Issue 只收缺陷与任务失败。
+  - name: 🔒 安全问题
+    url: https://github.com/vanyu0710/aicad/security/advisories/new
+    about: 请勿公开提报安全漏洞。

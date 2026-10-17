@@ -24,6 +24,9 @@
   <img alt="License" src="https://img.shields.io/badge/license-AGPL--3.0--or--later-green" />
 </p>
 
+> [!NOTE]
+> **The stable release is coming soon.** Until then, a **free early-access beta** remains open. Engineers who want to try Varen CAD ahead of the launch can apply via the [beta application issue](https://github.com/vanyu0710/Varen-AI-CAD/issues/new?template=beta_application.yml) or reach out directly (@vanyu0710) in Issues or Discussions. The beta is free of charge — all we ask in return is feedback from a real task of yours.
+
 > **Status:** Windows only, closed beta. Varen CAD is for concept design and rapid prototyping. It is not a SolidWorks replacement, it does not provide a complete 2D drawing workflow or a general assembly mate solver, and `production_ready` is always `false`. Every output requires human engineering review.
 
 > **Repository status (2026-10):** This repository is now a **distribution and landing portal** — product documentation, landing page and releases only. It no longer contains source code and does not accept source contributions. The previously open-sourced code has been detached from the upstream history. Existing forks are third-party copies lawfully obtained under the then-applicable AGPL-3.0; they are **not maintained by us** and do not represent the current product. Active development continues in a private repository.

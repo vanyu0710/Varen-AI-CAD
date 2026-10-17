@@ -24,6 +24,9 @@
   <img alt="License" src="https://img.shields.io/badge/license-AGPL--3.0--or--later-green" />
 </p>
 
+> [!NOTE]
+> **正式版即将推出。** 在此之前，Varen CAD 继续开放**免费内测**——想提前上手的工程师，请通过[内测申请 Issue](https://github.com/vanyu0710/Varen-AI-CAD/issues/new?template=beta_application.yml) 报名，或在 Issue / Discussions 中直接联系我（@vanyu0710）。内测完全免费，我们只希望换来你真实任务的使用反馈。
+
 > **当前状态：** Windows only，封闭 Beta。Varen CAD 面向概念设计和快速原型，不是 SolidWorks 替代品，不提供完整的 2D 工程图流程或通用装配配合求解器，并且 `production_ready` 始终为 `false`。所有输出都需要人工工程复核。
 
 > **仓库状态（2026-10）：** 本仓库已转为**发布与门户仓**——只包含产品文档、落地页与发行版，不再包含源码，也不再接受源码贡献。此前的开源代码已从上游历史中移除；网络中现存的分叉是第三方基于当时 AGPL-3.0 许可获取的副本，**不由官方维护**，也不代表当前产品形态。产品代码在私有仓继续开发。

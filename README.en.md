@@ -10,7 +10,7 @@
 </p>
 
 <p align="center">
-  <b><a href="https://github.com/vanyu0710/Varen-AI-CAD/releases/tag/v0.22.5-beta">Download Windows v0.22.5-beta</a></b> ·
+  <b><a href="https://github.com/vanyu0710/Varen-AI-CAD/releases/tag/v0.25.1-beta">Download Windows v0.25.1-beta</a></b> ·
   <a href="README.md">简体中文</a> ·
   <a href="https://vanyu0710.github.io/Varen-AI-CAD/">Product page</a> ·
   <a href="docs/beta.md">Apply for the beta</a> ·
@@ -111,16 +111,17 @@ Failures produce structured reports and can trigger rollback or another modeling
 
 Local storage does not mean offline inference: prompts, attached sketches, and task context sent to a remote endpoint are subject to that provider's data policy.
 
-## v0.22.5-beta highlights
+## v0.25 highlights
 
-- **Security hardening:** custom model endpoints require an explicit API key, real calls never implicitly send local keys, non-HTTP(S) and cloud-metadata addresses are rejected, WebSocket Origin is validated, and modeling scripts and artifact paths receive additional guards.
-- **Failed-task geometry rescue:** when the agent fails but the kernel still has positive-volume B-Rep geometry, STEP/STL are exported atomically; existing usable artifacts are not overwritten and failed/partial results are not presented as success.
-- **Multi-part viewing:** switch between assembly and current part, search parts, filter by visibility/interference, solo one part, and restore all.
-- **Quality gates:** see the [changelog](CHANGELOG.md) for details.
+- **Editable deliverables (.vpart / .vasm):** in addition to baked STEP, part archiving and assembly export now produce reference-style source files — modify a part, reload the assembly, and it follows automatically (the same relationship SolidWorks keeps between parts and assemblies). `.vpart` is a single-file part package (geometry + feature graph + operation history); `.vasm` is an assembly reference manifest.
+- **Sketch reference fix:** uploading a sketch as a reference in the chat now works for larger images too (scaled and JPEG-compressed into the model budget instead of being truncated, which previously caused sends to fail), and the sketch stays visible to the agent in later rounds.
+- **Cloud modeling:** a built-in cloud model endpoint — register or sign in with an invitation code, no self-hosted endpoint required; the local model configuration picks it up automatically.
+- **Performance:** snapshot rendering after each geometry operation reuses the render the kernel already computed, saving roughly 130–280 ms per modeling step.
+- **Quality gates:** 677 backend tests pass; see the [changelog](CHANGELOG.md) for details.
 
-## Engineering knowledge, subagents, and material review (source preview)
+## Engineering knowledge, subagents, and material review
 
-> These capabilities are present in the current source tree; they are not included in the v0.22.5-beta Windows package. Follow subsequent releases for installer availability.
+> These capabilities are included in the Windows package since v0.25.0-beta.
 
 Varen CAD does not treat professional-sounding material names as engineering facts:
 
@@ -134,30 +135,23 @@ Varen CAD does not treat professional-sounding material names as engineering fac
 
 ### Windows package
 
-The published Windows package checked on GitHub is **v0.22.5-beta** (about 184 MiB). The source [VERSION](VERSION) is `0.22.5-beta`. See [project status](docs/PROJECT_STATUS.md).
+The published Windows package checked on GitHub is **v0.25.1-beta** (ZIP about 212 MiB; a setup.exe installer is also provided). The source [VERSION](VERSION) is `0.25.1-beta`. See [project status](docs/PROJECT_STATUS.md).
 
-1. Open the [v0.22.5-beta release](https://github.com/vanyu0710/Varen-AI-CAD/releases/tag/v0.22.5-beta). Download `VarenCAD-win64-0.22.5-beta.zip` and its `.sha256` attachment under **Assets**, not the source-code archives. Run `Get-FileHash .\VarenCAD-win64-0.22.5-beta.zip -Algorithm SHA256` and compare the result with the checksum file.
-2. Extract the archive and run `VarenCAD.exe`.
-3. Open **Settings → Model** and configure an OpenAI-compatible endpoint.
+1. Open the [v0.25.1-beta release](https://github.com/vanyu0710/Varen-AI-CAD/releases/tag/v0.25.1-beta). Download `VarenCAD-win64-0.25.1-beta.zip` and its `.sha256` attachment under **Assets** (or grab the `VarenCAD-setup-0.25.1-beta.exe` installer instead), not the source-code archives. Run `Get-FileHash .\VarenCAD-win64-0.25.1-beta.zip -Algorithm SHA256` and compare the result with the checksum file.
+2. Extract the archive and run `VarenCAD.exe` (the installer does this for you).
+3. Open **Settings → Model** and configure an OpenAI-compatible endpoint; if you do not host one, the built-in cloud model (invitation-code registration) works too.
 4. Try:
 
    ```text
    Create a 120 x 120 x 12 mm flange with a 30 mm through hole and six 8 mm holes on a 90 mm bolt circle. Report assumptions and refuse export if validation fails.
    ```
 
-### Source checkout
+### Source code and forks
 
-```powershell
-git clone https://github.com/vanyu0710/Varen-AI-CAD.git
-git clone https://github.com/vanyu0710/mechcad-kernel.git
-cd Varen-AI-CAD
-python -m venv .venv
-.\.venv\Scripts\Activate.ps1
-pip install -r requirements.txt build123d==0.11.1 cadquery-ocp-novtk==7.9.3.0
-.\start-mechcad-pro.cmd
-```
+This repository is now a **distribution and landing portal** and no longer contains source code. MechKernel and the product code continue development in private repositories, and this repo does not accept source contributions. Forks from before 2026-10 derive from the code that was open at the time under AGPL-3.0; they are **not maintained by us** and do not represent the current product.
 
-The default kernel location is a sibling `mechcad-kernel` checkout. Override it with `MECHCAD_KERNEL_REPO` or `MECHCAD_KERNEL_PYTHON` when needed. See [.env.example](.env.example) and [the getting started guide](docs/GETTING_STARTED.md).
+- To try the product: apply via the [beta application issue](https://github.com/vanyu0710/Varen-AI-CAD/issues/new?template=beta_application.yml).
+- Commercial licensing for closed-source distribution and OEM integration: see [docs/license-strategy.md](docs/license-strategy.md).
 
 ## What the workflow exposes
 
@@ -165,13 +159,14 @@ The default kernel location is a sibling `mechcad-kernel` checkout. Override it 
 - **Questions:** `ask_user` presents structured single-choice, multiple-choice, or text questions.
 - **Planning:** `propose_plan` creates the BOM and grouped modeling steps; approval is a hard gate.
 - **Modeling:** public kernel operations and the constrained `run_build_script` path create real features.
-- **Part completion:** `finish_part` runs single-solid and feature-contract checks before archiving STEP/STL files.
+- **Part completion:** `finish_part` runs single-solid and feature-contract checks before archiving STEP/STL files, and additionally produces a `.vpart` single-file package (geometry + feature graph + operation history).
 - **Editing:** the feature tree supports parameter changes, replay, delete, undo, and redo.
-- **Assembly:** `export_assembly` places BOM parts, creates an assembly STEP, and reports pairwise interference.
+- **Assembly:** `export_assembly` places BOM parts, creates the assembly STEP together with a `.vasm` reference-style assembly source file, and reports pairwise interference.
 - **Evidence:** execution reports include assumptions, completed parts, failed gates, geometry checks, and items requiring review.
 - **Engineering review:** summarizes material proxies, critical parts, STEP/STL artifacts, hard collisions, and assembly exemptions without treating a render material as a purchasing specification.
 - **Engineering knowledge:** uploaded documents retain originals and SHA256 hashes; evidence becomes searchable and available to the modeling chain only after human review and publication.
 - **Subagents:** generate bounded research plans, risks, and parameters requiring confirmation without directly mutating the CAD session.
+- **Sketch references:** upload a sketch in the chat and the agent can reference it throughout the task; the image is compressed into the model budget and survives long-session compaction.
 
 ## Technical boundaries
 

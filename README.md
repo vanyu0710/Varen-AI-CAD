@@ -10,7 +10,7 @@
 </p>
 
 <p align="center">
-  <b><a href="https://github.com/vanyu0710/Varen-AI-CAD/releases/tag/v0.22.5-beta">下载 Windows v0.22.5-beta</a></b> ·
+  <b><a href="https://github.com/vanyu0710/Varen-AI-CAD/releases/tag/v0.25.1-beta">下载 Windows v0.25.1-beta</a></b> ·
   <a href="README.en.md">English</a> ·
   <a href="https://vanyu0710.github.io/Varen-AI-CAD/">产品落地页</a> ·
   <a href="docs/beta.md">申请 Beta</a> ·
@@ -111,16 +111,17 @@ Agent 通过受约束的内核操作和结构化 `StepResult` 反馈工作，不
 
 本地存储不等于离线推理：发送到远程端点的提示词、附图和任务上下文受该服务商的数据政策约束。
 
-## v0.22.5-beta 更新重点
+## v0.25 更新重点
 
-- **安全加固**：自定义模型端点必须显式携带 API Key，真实调用不隐式外发本地密钥；拒绝非 HTTP(S) 与云元数据地址，WebSocket 校验 Origin，建模脚本与 artifact 路径增加防护。
-- **失败任务几何抢救**：Agent 失败但内核仍有正体积 B-Rep 时原子导出 STEP/STL；不覆盖既有可用产物，也不把 failed/partial 包装成 success。
-- **多零件查看**：支持装配/当前零件切换、零件搜索、可见/干涉筛选、单件 solo 与恢复全部。
-- **质量门禁**：详见 [更新日志](CHANGELOG.md)。
+- **可编辑交付件（.vpart / .vasm）**：零件归档与装配导出在交付 STEP 之外，同时产出引用式源文件——改零件、重新载入装配即可自动跟随（相当于 SolidWorks 中零件与装配的关系）。`.vpart` 是零件单文件包（几何 + 特征图 + 操作历史），`.vasm` 是装配引用清单。
+- **草图参考修复**：在对话中上传草图作参考时，过大图片从此可以正常发送（等比缩放 + JPEG 压缩进入模型预算，而不是截断数据导致发送失败），并且后续轮次一直能参照到这张草图。
+- **云端建模**：内置云端模型端点，用邀请码注册 / 登录即可使用，不需要自建 API 端点；已登录后本地模型配置自动生效。
+- **性能**：几何操作后的快照渲染复用内核已经算好的渲染结果，每个建模步骤省约 130–280ms。
+- **质量门禁**：后端 677 项测试通过；详见[更新日志](CHANGELOG.md)。
 
-## 工程知识、子代理与材料审查（源码预览）
+## 工程知识、子代理与材料审查
 
-> 以下能力已进入当前源码工作区；v0.22.5-beta Windows 安装包尚未包含，实际可用性以后续 Release 为准。
+> 以下能力自 v0.25.0-beta 起已包含在 Windows 安装包中。
 
 Varen CAD 不把“看起来专业”的材料名词当作工程事实：
 
@@ -134,30 +135,23 @@ Varen CAD 不把“看起来专业”的材料名词当作工程事实：
 
 ### Windows 安装包
 
-本次在 GitHub 核对到的 Windows 安装包是 **v0.22.5-beta**（约 184 MiB）。源码 [VERSION](VERSION) 为 `0.22.5-beta`，详见[项目状态](docs/PROJECT_STATUS.md)。
+本次在 GitHub 核对到的 Windows 安装包是 **v0.25.1-beta**（ZIP 约 212 MiB，另提供 setup.exe 安装器）。源码 [VERSION](VERSION) 为 `0.25.1-beta`，详见[项目状态](docs/PROJECT_STATUS.md)。
 
-1. 打开 [v0.22.5-beta 发布页](https://github.com/vanyu0710/Varen-AI-CAD/releases/tag/v0.22.5-beta)，在 **Assets** 中下载 `VarenCAD-win64-0.22.5-beta.zip` 和配套 `.sha256` 文件，不要下载源码压缩包。运行 `Get-FileHash .\VarenCAD-win64-0.22.5-beta.zip -Algorithm SHA256`，将结果与校验文件比较。
-2. 解压并运行 `VarenCAD.exe`。
-3. 打开 **设置 → 模型**，配置一个 OpenAI 兼容端点。
+1. 打开 [v0.25.1-beta 发布页](https://github.com/vanyu0710/Varen-AI-CAD/releases/tag/v0.25.1-beta)，在 **Assets** 中下载 `VarenCAD-win64-0.25.1-beta.zip` 和配套 `.sha256` 文件（或直接下载 `VarenCAD-setup-0.25.1-beta.exe` 安装器），不要下载源码压缩包。运行 `Get-FileHash .\VarenCAD-win64-0.25.1-beta.zip -Algorithm SHA256`，将结果与校验文件比较。
+2. 解压并运行 `VarenCAD.exe`（使用安装器时由安装器完成）。
+3. 打开 **设置 → 模型**，配置一个 OpenAI 兼容端点；没有自建端点时也可以用内置的云端模型（邀请码注册）。
 4. 试运行：
 
    ```text
    做一块 120×120×12 mm 的法兰，中心 Ø30 通孔，Ø90 螺栓圆上均匀分布 6 个 Ø8 孔。报告所有假设，验证失败时拒绝导出。
    ```
 
-### 从源码运行
+### 源码与二次开发
 
-```powershell
-git clone https://github.com/vanyu0710/Varen-AI-CAD.git
-git clone https://github.com/vanyu0710/mechcad-kernel.git
-cd Varen-AI-CAD
-python -m venv .venv
-.\.venv\Scripts\Activate.ps1
-pip install -r requirements.txt build123d==0.11.1 cadquery-ocp-novtk==7.9.3.0
-.\start-mechcad-pro.cmd
-```
+本仓已转为**发布与门户仓**，不再包含源码；MechKernel 与产品代码均在私有仓继续开发，本仓不接受源码贡献。2026-10 之前曾开源的代码由第三方依据当时 AGPL-3.0 获取的分叉继续存在，但**不由官方维护**，也不代表当前产品形态。
 
-默认内核路径是与主仓库同级的 `mechcad-kernel`。如需覆盖，可设置 `MECHCAD_KERNEL_REPO` 或 `MECHCAD_KERNEL_PYTHON`。详见 [.env.example](.env.example) 和[入门指南](docs/GETTING_STARTED.md)。
+- 想直接试用：走[内测申请 Issue](https://github.com/vanyu0710/Varen-AI-CAD/issues/new?template=beta_application.yml)。
+- 闭源分发与 OEM 集成的商业许可：见[许可策略](docs/license-strategy.md)。
 
 ## 工作流中实际可见的内容
 
@@ -165,13 +159,14 @@ pip install -r requirements.txt build123d==0.11.1 cadquery-ocp-novtk==7.9.3.0
 - **提问：** `ask_user` 展示单选、多选或文本问题。
 - **规划：** `propose_plan` 创建 BOM 和分组建模步骤；审批是硬门控。
 - **建模：** 公开内核操作和受约束的 `run_build_script` 路径生成真实特征。
-- **零件完成：** `finish_part` 在归档 STEP/STL 前执行单实体和特征契约检查。
+- **零件完成：** `finish_part` 在归档 STEP/STL 前执行单实体和特征契约检查，同时产出 `.vpart` 单文件包（几何 + 特征图 + 操作历史）。
 - **编辑：** 特征树支持改参数、重放、删除、撤销和重做。
-- **装配：** `export_assembly` 按 BOM 放置零件，创建装配 STEP，并报告零件对之间的干涉。
+- **装配：** `export_assembly` 按 BOM 放置零件，创建装配 STEP 与 `.vasm` 引用式装配源文件，并报告零件对之间的干涉。
 - **证据：** execution report 包含假设、已完成零件、失败门控、几何检查和待人工复核项目。
 - **工程审查：** 汇总材料代理、重点零件、STEP/STL 产物、硬碰撞与装配豁免，不把渲染材质当作采购规格。
 - **工程知识：** 上传资料保留原件与 SHA256，证据人工审核发布后才可搜索和进入建模链路。
 - **子代理：** 生成受限研究计划、风险与待确认参数，不能直接修改 CAD 会话。
+- **草图参考：** 在对话中上传草图，Agent 全程可以参照；图片自动压缩进模型预算，长会话压缩也不会丢失草图。
 
 ## 技术边界
 

@@ -10,7 +10,7 @@
 </p>
 
 <p align="center">
-  <b><a href="https://github.com/vanyu0710/Varen-AI-CAD/releases/tag/v0.25.1-beta">Download Windows v0.25.1-beta</a></b> ·
+  <b><a href="https://github.com/vanyu0710/Varen-AI-CAD/releases/tag/v0.26.1-beta">Download Windows v0.26.1-beta</a></b> ·
   <a href="README.md">简体中文</a> ·
   <a href="https://vanyu0710.github.io/Varen-AI-CAD/">Product page</a> ·
   <a href="docs/beta.md">Apply for the beta</a> ·
@@ -111,13 +111,14 @@ Failures produce structured reports and can trigger rollback or another modeling
 
 Local storage does not mean offline inference: prompts, attached sketches, and task context sent to a remote endpoint are subject to that provider's data policy.
 
-## v0.25 highlights
+## v0.26.1 highlights
 
-- **Editable deliverables (.vpart / .vasm):** in addition to baked STEP, part archiving and assembly export now produce reference-style source files — modify a part, reload the assembly, and it follows automatically (the same relationship SolidWorks keeps between parts and assemblies). `.vpart` is a single-file part package (geometry + feature graph + operation history); `.vasm` is an assembly reference manifest.
-- **Sketch reference fix:** uploading a sketch as a reference in the chat now works for larger images too (scaled and JPEG-compressed into the model budget instead of being truncated, which previously caused sends to fail), and the sketch stays visible to the agent in later rounds.
-- **Cloud modeling:** a built-in cloud model endpoint — register or sign in with an invitation code, no self-hosted endpoint required; the local model configuration picks it up automatically.
-- **Performance:** snapshot rendering after each geometry operation reuses the render the kernel already computed, saving roughly 130–280 ms per modeling step.
-- **Quality gates:** 677 backend tests pass; see the [changelog](CHANGELOG.md) for details.
+- **Auto-update, verified on a real machine:** the v0.26.0 updater exposed four defects during a real upgrade test (the old process still held the apply directory, a 4-second read timeout on downloads, boot-time apply fighting user-data restore, and the apply script inheriting the app root as its working directory). All four are fixed in this build. Verified end to end: a 211.9 MiB asset downloaded in 185.7s with a matching SHA256; clicking "restart and update now" swaps files, relaunches, and preserves `work/` user data.
+- **Standalone app window (desktop shell):** the packaged build no longer opens a browser tab. It launches a Chromium (Edge preferred) `--app` window with no address bar or tabs, maximized, with its own user-data directory; closing the window quits the app. `--browser` falls back to the default browser.
+- **Standard parts library (GB / ISO):** driven by a SQLite catalog of 20 standards (13 of them generate real geometry: hex bolts/nuts, parallel keys, dowel pins, washers, and more; the other 7 are dimension data only). The agent inserts them through the `standard_part` tool straight from the catalog; source tables are SHA256-locked against drift.
+- **Manufacturing side:** deterministic `manufacturing_audit`; DFM takes the process route as a design input; materials are checked against explicit grade tables, with unknown grades marked instead of guessed.
+- **Reliability:** hardened conversation/business gates (step budget, approval timeouts, under-part delivery, pose warnings).
+- **Quality gates:** see the [changelog](CHANGELOG.md) for details.
 
 ## Engineering knowledge, subagents, and material review
 
@@ -135,9 +136,9 @@ Varen CAD does not treat professional-sounding material names as engineering fac
 
 ### Windows package
 
-The published Windows package checked on GitHub is **v0.25.1-beta** (ZIP about 212 MiB; a setup.exe installer is also provided). The source [VERSION](VERSION) is `0.25.1-beta`. See [project status](docs/PROJECT_STATUS.md).
+The published Windows package checked on GitHub is **v0.26.1-beta** (ZIP about 212 MiB; a setup.exe installer is also provided). The source [VERSION](VERSION) is `0.26.1-beta`. See [project status](docs/PROJECT_STATUS.md).
 
-1. Open the [v0.25.1-beta release](https://github.com/vanyu0710/Varen-AI-CAD/releases/tag/v0.25.1-beta). Download `VarenCAD-win64-0.25.1-beta.zip` and its `.sha256` attachment under **Assets** (or grab the `VarenCAD-setup-0.25.1-beta.exe` installer instead), not the source-code archives. Run `Get-FileHash .\VarenCAD-win64-0.25.1-beta.zip -Algorithm SHA256` and compare the result with the checksum file.
+1. Open the [v0.26.1-beta release](https://github.com/vanyu0710/Varen-AI-CAD/releases/tag/v0.26.1-beta). Download `VarenCAD-win64-0.26.1-beta.zip` and its `.sha256` attachment under **Assets** (or grab the `VarenCAD-setup-0.26.1-beta.exe` installer instead), not the source-code archives. Run `Get-FileHash .\VarenCAD-win64-0.26.1-beta.zip -Algorithm SHA256` and compare the result with the checksum file.
 2. Extract the archive and run `VarenCAD.exe` (the installer does this for you).
 3. Open **Settings → Model** and configure an OpenAI-compatible endpoint; if you do not host one, the built-in cloud model (invitation-code registration) works too.
 4. Try:
@@ -145,6 +146,8 @@ The published Windows package checked on GitHub is **v0.25.1-beta** (ZIP about 2
    ```text
    Create a 120 x 120 x 12 mm flange with a 30 mm through hole and six 8 mm holes on a 90 mm bolt circle. Report assumptions and refuse export if validation fails.
    ```
+
+> **Upgrading:** from **v0.26.1-beta** onward, the in-app "restart and update now" works (update banner → update → automatic file swap and relaunch). Coming from **v0.25.x**, run the installer above once manually — the old updater cannot repair itself. `work/` user data and `.env` are preserved.
 
 ### Source code and forks
 

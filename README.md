@@ -10,7 +10,7 @@
 </p>
 
 <p align="center">
-  <b><a href="https://github.com/vanyu0710/Varen-AI-CAD/releases/tag/v0.26.1-beta">下载 Windows v0.26.1-beta</a></b> ·
+  <b><a href="https://github.com/vanyu0710/Varen-AI-CAD/releases/tag/v0.29.0-beta">下载 Windows v0.29.0-beta</a></b> ·
   <a href="README.en.md">English</a> ·
   <a href="https://vanyu0710.github.io/Varen-AI-CAD/">产品落地页</a> ·
   <a href="docs/beta.md">申请 Beta</a> ·
@@ -111,14 +111,14 @@ Agent 通过受约束的内核操作和结构化 `StepResult` 反馈工作，不
 
 本地存储不等于离线推理：发送到远程端点的提示词、附图和任务上下文受该服务商的数据政策约束。
 
-## v0.26.1 更新重点
+## v0.29.0-beta 更新重点
 
-- **自动更新：真机实测可用**：v0.26.0 的更新器在真机升级中暴露 4 个缺陷（换文件时旧进程未退出导致目录被占用、下载 4 秒读超时、启动自动应用与用户数据恢复互相打架、脚本工作目录被进程占用），本版全部修好。真机验证：211.9 MiB 资产下载 185.7s、SHA256 一致；点「立即重启并更新」后自动换文件并拉起新版本，`work/` 用户数据保留。
-- **独立应用窗口（桌面外壳）**：打包版不再打开浏览器标签页——用 Chromium（Edge 优先）的 `--app` 模式开一个无地址栏/标签页、最大化的独立窗口，关窗＝退出程序；`--browser` 可回退到系统默认浏览器。
-- **标准件库（国标 / ISO）**：SQLite 目录库驱动，20 个标准（其中 13 个可生成几何：六角螺栓/螺母、平键、圆柱销、各类垫圈等，另 7 个仅提供尺寸数据）。agent 用 `standard_part` 工具按目录插入，源表 SHA256 锁定防止数据漂移。
-- **制造侧**：`manufacturing_audit` 确定性可制造性审查；DFM 把工艺路线作为设计输入；材料改为显式牌号核查，未知材料显式标记。
-- **可靠性**：对话/业务门控硬化（步数预算、审批超时、少件交付、位姿警告）。
-- **质量门禁**：详见[更新日志](CHANGELOG.md)。
+- **Varen Agent 增强引擎**：内嵌运行时支持联网搜索、网页读取、项目文件读取、researcher/dfm/verifier 子代理、技能和上下文压缩；经典引擎仍可选，启动失败自动回退。
+- **联网搜索**：设置页支持 Tavily 兼容端点和 DeepSeek Search API；搜索/抓取工具卡显示查询、结果数、可点击来源与真实错误，未配置时可直接打开搜索设置。
+- **多模态规划**：支持视觉的规划模型可直接接收草图/图纸图片，不再强制先做视觉预描述。
+- **专业 CAD 工作区**：特征树、选面/选边驱动特征、装配导出、干涉检查、交付报告继续可用；内核 v2.28 的选择驱动建模能力进入本安装包。
+- **从想法到产品（第 1–2 阶段）**：需求细化、调研求证、证据审核与回填；第 3–4 阶段仍明确标注未开放。
+- **质量门禁**：详见[更新日志](CHANGELOG.md)与[发布说明](docs/release/v0.29.0-beta-notes.md)。
 
 ## 工程知识、子代理与材料审查
 
@@ -136,9 +136,9 @@ Varen CAD 不把“看起来专业”的材料名词当作工程事实：
 
 ### Windows 安装包
 
-本次在 GitHub 核对到的 Windows 安装包是 **v0.26.1-beta**（ZIP 约 212 MiB，另提供 setup.exe 安装器）。源码 [VERSION](VERSION) 为 `0.26.1-beta`，详见[项目状态](docs/PROJECT_STATUS.md)。
+本次在 GitHub 核对到的 Windows 安装包是 **v0.29.0-beta**（ZIP 约 452 MiB，另提供 setup.exe 安装器）。源码 [VERSION](VERSION) 为 `0.29.0-beta`，详见[项目状态](docs/PROJECT_STATUS.md)。
 
-1. 打开 [v0.26.1-beta 发布页](https://github.com/vanyu0710/Varen-AI-CAD/releases/tag/v0.26.1-beta)，在 **Assets** 中下载 `VarenCAD-win64-0.26.1-beta.zip` 和配套 `.sha256` 文件（或直接下载 `VarenCAD-setup-0.26.1-beta.exe` 安装器），不要下载源码压缩包。运行 `Get-FileHash .\VarenCAD-win64-0.26.1-beta.zip -Algorithm SHA256`，将结果与校验文件比较。
+1. 打开 [v0.29.0-beta 发布页](https://github.com/vanyu0710/Varen-AI-CAD/releases/tag/v0.29.0-beta)，在 **Assets** 中下载 `VarenCAD-win64-0.29.0-beta.zip` 和配套 `.sha256` 文件（或直接下载 `VarenCAD-setup-0.29.0-beta.exe` 安装器），不要下载源码压缩包。运行 `Get-FileHash .\VarenCAD-win64-0.29.0-beta.zip -Algorithm SHA256`，将结果与校验文件比较。
 2. 解压并运行 `VarenCAD.exe`（使用安装器时由安装器完成）。
 3. 打开 **设置 → 模型**，配置一个 OpenAI 兼容端点；没有自建端点时也可以用内置的云端模型（邀请码注册）。
 4. 试运行：

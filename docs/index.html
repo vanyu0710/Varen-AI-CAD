@@ -4,8 +4,8 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="#f5f4ef">
-  <title>Varen CAD — AI 机械 CAD 建模</title>
-  <meta name="description" content="从机械需求到真实 CAD 几何。Varen CAD AI Agent 会规划 BOM、逐件创建参数化 B-Rep 零件、检查装配并导出 STEP。">
+  <title>Varen CAD — AI 机械 CAD 建模与联网调研</title>
+  <meta name="description" content="从机械需求到真实 CAD 几何。Varen CAD Agent 会联网调研、规划 BOM、逐件创建参数化 B-Rep 零件、检查装配并导出 STEP。">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=DM+Sans:wght@400;500;600;700&family=Noto+Sans+SC:wght@400;500;600;700;800&display=swap" rel="stylesheet">
@@ -102,7 +102,7 @@
     .principle p { margin: 0; max-width: 600px; color: var(--muted); font-size: 12px; line-height: 1.8; }
 
     .limits { background: #e9ece8; }
-    .limits-grid { display: grid; grid-template-columns: repeat(3, 1fr); border-top: 1px solid #14263635; }
+    .limits-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); border-top: 1px solid #14263635; }
     .limit { padding: 17px 20px 0 0; margin-right: 20px; border-right: 1px solid #14263620; }
     .limit:last-child { border: 0; margin: 0; }
     .limit b { display: block; font-size: 13px; margin-bottom: 5px; }
@@ -180,7 +180,7 @@
             <h1>把机械需求，<br><span>变成真实 CAD 几何。</span></h1>
           </div>
           <div class="hero-copy">
-            <p><strong>Varen CAD 是为机械设计打造的 AI 建模工具。</strong>它先计算、提问、列出 BOM 等你确认，再逐件创建可编辑的参数化零件，检查装配并导出 STEP。检查不过，不会把结果说成成功交付。</p>
+            <p><strong>Varen CAD 是为机械设计打造的 AI 建模工具。</strong>它先调研计算、提问、列出 BOM 等你确认，再逐件创建可编辑的参数化零件，检查装配并导出 STEP。需要资料时会联网检索并展示可核对来源；检查不过，不会把结果说成成功交付。</p>
             <div class="hero-actions">
               <a class="button button-primary" href="https://github.com/vanyu0710/Varen-AI-CAD/releases/tag/v0.29.0-beta">获取 Windows Beta ↗</a>
               <a class="text-link" href="#results">看真实结果 ↓</a>
@@ -205,7 +205,7 @@
       <div class="wrap">
         <div class="section-head"><span class="eyebrow">HOW IT WORKS</span><h2>AI 负责建模，<br>你掌握设计决定。</h2><p>从需求到装配按步骤推进。计划先审核，几何后生成，结果再检查。</p></div>
         <div class="steps">
-          <article class="step"><span class="step-num">01 / UNDERSTAND</span><h3>理解与计算</h3><p>整理设计意图，估算关键尺寸。需求不清楚时先向你提问。</p></article>
+          <article class="step"><span class="step-num">01 / RESEARCH</span><h3>调研与理解</h3><p>整理设计意图，必要时联网检索并展示来源；尺寸或约束不清楚时先向你提问。</p></article>
           <article class="step"><span class="step-num">02 / PLAN</span><h3>计划由你批准</h3><p>列出 BOM、零件参数与建模步骤；你确认后才开始建模。</p></article>
           <article class="step"><span class="step-num">03 / MODEL</span><h3>生成真实几何</h3><p>用 CAD 内核逐件创建参数化 B-Rep 零件，保留特征历史。</p></article>
           <article class="step"><span class="step-num">04 / CHECK</span><h3>检查后再交付</h3><p>验证零件与装配干涉。失败会阻止导出为成功结果，并保留记录。</p></article>
@@ -227,10 +227,12 @@
       <div class="wrap principles">
         <div class="section-head"><span class="eyebrow">BUILT FOR ENGINEERING REVIEW</span><h2>看得见过程，<br>也看得见边界。</h2><p>AI 生成不等于工程正确。Varen CAD 把计算、计划、建模和检查结果留给人复核。</p></div>
         <div class="principle-list">
-          <article class="principle"><span class="n">01</span><div><h3>真实 CAD 几何，不是图片或网格</h3><p>以 OpenCascade 内核创建 B-Rep 几何，导出参数化零件和装配 STEP，并保留可编辑的 .vpart / .vasm 源文件。</p></div></article>
+          <article class="principle"><span class="n">01</span><div><h3>真实 CAD 几何，不是图片或网格</h3><p>以 OpenCascade 内核创建 B-Rep 几何，导出参数化零件和装配 STEP。</p></div></article>
           <article class="principle"><span class="n">02</span><div><h3>关键计划先经你确认</h3><p>AI 提出零件清单与参数计划，批准后才执行建模。</p></div></article>
           <article class="principle"><span class="n">03</span><div><h3>失败不是成功交付</h3><p>几何、特征契约或碰撞检查失败时，系统会拦截交付并记录原因。</p></div></article>
           <article class="principle"><span class="n">04</span><div><h3>本地保存，远端模型需留意</h3><p>项目文件保存在本机；若连接远程模型服务，发送的提示词和上下文仍受服务商政策约束。</p></div></article>
+          <article class="principle"><span class="n">05</span><div><h3>联网调研，来源可核</h3><p>搜索与抓取结果显示在 Agent 会话中，带可点击来源；外部摘要标记为不可信，引用前可抓原文核对。</p></div></article>
+          <article class="principle"><span class="n">06</span><div><h3>模型端点可自选</h3><p>支持 DeepSeek 与 OpenAI 兼容端点；联网搜索可接 Tavily 兼容端点或 DeepSeek Search API，密钥只保存在本机。</p></div></article>
         </div>
       </div>
     </section>
@@ -242,6 +244,7 @@
           <div class="limit"><b>必须人工工程审核</b><p><code>production_ready</code> 始终为 false。制造前由工程师复核尺寸、材料和设计。</p></div>
           <div class="limit"><b>不是 SolidWorks 替代品</b><p>不提供完整 2D 工程图流程或通用装配配合、运动求解器。</p></div>
           <div class="limit"><b>当前仅支持 Windows</b><p>Beta 安装包面向 Windows x64；远程模型端点需要用户自行配置。</p></div>
+          <div class="limit"><b>联网搜索需配置</b><p>搜索 API 或云端登录需要在设置中配置；未配置时工具会明确报错，不会编造来源。</p></div>
         </div>
       </div>
     </section>

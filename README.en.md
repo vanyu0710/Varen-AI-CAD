@@ -127,7 +127,7 @@ Local storage does not mean offline inference: prompts, attached sketches, and t
 Varen CAD does not treat professional-sounding material names as engineering facts:
 
 - **Evidence-first knowledge center:** register or upload source documents; originals and SHA256 hashes are retained, evidence requires human review before publication, engineering facts must reference evidence, and conflicts are never resolved by silently picking one value.
-- **Bounded subagents:** create research plans, risks, and parameters requiring confirmation for sealing, fasteners, aluminum profiles, manufacturing, and geometry validation. A subagent cannot mutate the primary CAD session.
+- **Bounded subagents:** the knowledge workbench creates research plans, risks, and parameters requiring confirmation for sealing, fasteners, aluminum profiles, manufacturing, and geometry validation. The enhanced Agent can also delegate to read-only researcher / dfm / verifier subagents for research and review; a child cannot mutate geometry, plans, or archived parts.
 - **Fact-first material and engineering review:** the material panel groups viewport rendering proxies for active parts and distinguishes measured/programmatic results from rendering proxies and items awaiting human engineering review.
 - **Critical-part and assembly review:** summarizes revisions, roles, dependencies, measured volume, validation status, STEP/STL artifacts, hard collisions, expected fit / expected mesh exemptions, and superseded exclusions.
 - **Boundary:** `steel`, `cast_iron`, and `aluminum` are viewport material keys, not purchasing specifications. The system does not invent unreviewed values such as 45 steel, 6061-T6, yield strength, hardness, or density.
@@ -168,7 +168,8 @@ This repository is now a **distribution and landing portal** and no longer conta
 - **Evidence:** execution reports include assumptions, completed parts, failed gates, geometry checks, and items requiring review.
 - **Engineering review:** summarizes material proxies, critical parts, STEP/STL artifacts, hard collisions, and assembly exemptions without treating a render material as a purchasing specification.
 - **Engineering knowledge:** uploaded documents retain originals and SHA256 hashes; evidence becomes searchable and available to the modeling chain only after human review and publication.
-- **Subagents:** generate bounded research plans, risks, and parameters requiring confirmation without directly mutating the CAD session.
+- **Web research:** `web_search` / `web_fetch` cards show queries, result counts, and clickable sources; external snippets are marked untrusted and can be verified by fetching the original page.
+- **Subagents:** the enhanced engine supports read-only researcher / dfm / verifier subagents for search, project reads, and read-only queries/reviews; they cannot mutate geometry, plans, or archived parts, and report back to the parent session.
 - **Sketch references:** upload a sketch in the chat and the agent can reference it throughout the task; the image is compressed into the model budget and survives long-session compaction.
 
 ## Technical boundaries
